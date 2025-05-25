@@ -1,113 +1,162 @@
 const Division = require('../models/Division');
 const Employee = require('../models/Employee');
+const mongoose = require('mongoose');
 
 exports.getDivisions = async (req, res) => {
   try {
     const divisions = await Division.find()
-      .populate('managerId', 'nomComplet')
+      .populate('managerId', 'nomComplet grade missionPoste')
       .populate('employeeIds', 'nomComplet');
-    const formattedDivisions = divisions.map(d => ({
-      id: d._id,
-      division: d.name,
-      manager: d.managerId ? d.managerId.nomComplet : '',
-      currentProject: d.currentProject,
-      employees: d.employeeIds.map(e => e.nomComplet),
-    }));
-    res.json(formattedDivisions);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(200).json(divisions);
+  } catch (err) {
+    console.error('Error fetching divisions:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
 
 exports.getDivision = async (req, res) => {
   try {
     const division = await Division.findById(req.params.id)
-      .populate('managerId', 'nomComplet')
+      .populate('managerId', 'nomComplet grade missionPoste dateNaissance sexe email numeroTelephone dateRecrutement diplome affectation situationFamiliale formationInitiale activitePrincipale cin ppr adresse experienceExterne experienceInterne')
       .populate('employeeIds', 'nomComplet');
-    if (!division) return res.status(404).json({ message: 'Division not found' });
-    const formattedDivision = {
-      id: division._id,
-      division: division.name,
-      manager: division.managerId ? division.managerId.nomComplet : '',
-      currentProject: division.currentProject,
-      employees: division.employeeIds.map(e => e.nomComplet),
-    };
-    res.json(formattedDivision);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    if (!division) {
+      return res.status(404).json({ message: 'Division not found' });
+    }
+    res.status(200).json(division);
+  } catch (err) {
+    console.error('Error fetching division:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+exports.getDivisionByName = async (req, res) => {
+  try {
+    const division = await Division.findOne({ name: req.params.name })
+      .populate('managerId', 'nomComplet grade missionPoste dateNaissance sexe email numeroTelephone dateRecrutement diplome affectation situationFamiliale formationInitiale activitePrincipale cin ppr adresse experienceExterne experienceInterne')
+      .populate('employeeIds', 'nomComplet');
+    if (!division) {
+      return res.status(404).json({ message: 'Division not found' });
+    }
+    res.status(200).json(division);
+  } catch (err) {
+    console.error('Error fetching division by name:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
 
 exports.createDivision = async (req, res) => {
-  const { division, manager, currentProject, employees } = req.body;
+  const { name, currentProject, managerId, employeeIds } = req.body;
   try {
-    const managerEmployee = await Employee.findOne({ nomComplet: manager });
-    if (!managerEmployee) return res.status(400).json({ message: 'Manager not found' });
-
-    const employeeRecords = await Employee.find({ nomComplet: { $in: employees } });
-    if (employeeRecords.length !== employees.length) return res.status(400).json({ message: 'Some employees not found' });
-
-    const divisionData = new Division({
-      name: division,
-      managerId: managerEmployee._id,
-      currentProject,
-      employeeIds: employeeRecords.map(e => e._id),
+    if (!name) {
+      return res.status(400).json({ message: 'Division name is required' });
+    }
+    const existingDivision = await Division.findOne({ name });
+    if (existingDivision) {
+      return res.status(400).json({ message: 'Division name must be unique' });
+    }
+    const division = new Division({ 
+      name, 
+      currentProject, 
+      managerId, 
+      employeeIds, 
+      isSeeded: false
     });
-    await divisionData.save();
-
-    const formattedDivision = {
-      id: divisionData._id,
-      division: divisionData.name,
-      manager: managerEmployee.nomComplet,
-      currentProject: divisionData.currentProject,
-      employees: employeeRecords.map(e => e.nomComplet),
-    };
-    res.status(201).json(formattedDivision);
-  } catch (error) {
-    res.status(400).json({ message: 'Invalid data' });
+    await division.save();
+    res.status(201).json(division);
+  } catch (err) {
+    console.error('Error creating division:', err);
+    res.status(400).json({ message: 'Invalid data', error: err.message });
   }
 };
 
 exports.updateDivision = async (req, res) => {
-  const { division, manager, currentProject, employees } = req.body;
+  const { managerId, employeeIds } = req.body;
   try {
-    const managerEmployee = await Employee.findOne({ nomComplet: manager });
-    if (!managerEmployee) return res.status(400).json({ message: 'Manager not found' });
-
-    const employeeRecords = await Employee.find({ nomComplet: { $in: employees } });
-    if (employeeRecords.length !== employees.length) return res.status(400).json({ message: 'Some employees not found' });
-
-    const divisionData = await Division.findByIdAndUpdate(
-      req.params.id,
-      {
-        name: division,
-        managerId: managerEmployee._id,
-        currentProject,
-        employeeIds: employeeRecords.map(e => e._id),
-      },
-      { new: true }
-    ).populate('managerId', 'nomComplet').populate('employeeIds', 'nomComplet');
-    if (!divisionData) return res.status(404).json({ message: 'Division not found' });
-
-    const formattedDivision = {
-      id: divisionData._id,
-      division: divisionData.name,
-      manager: divisionData.managerId ? divisionData.managerId.nomComplet : '',
-      currentProject: divisionData.currentProject,
-      employees: divisionData.employeeIds.map(e => e.nomComplet),
-    };
-    res.json(formattedDivision);
-  } catch (error) {
-    res.status(400).json({ message: 'Invalid data' });
+    const division = await Division.findById(req.params.id);
+    if (!division) {
+      return res.status(404).json({ message: 'Division not found' });
+    }
+    if (division.isSeeded) {
+      return res.status(403).json({ message: 'Cannot modify seeded divisions' });
+    }
+    if (managerId) {
+      if (!employeeIds || !employeeIds.includes(managerId)) {
+        return res.status(400).json({ message: 'Manager must be an employee of the division' });
+      }
+      division.managerId = managerId;
+    } else {
+      division.managerId = null;
+    }
+    if (employeeIds) {
+      const validEmployees = await Employee.find({ _id: { $in: employeeIds } });
+      if (validEmployees.length !== employeeIds.length) {
+        return res.status(400).json({ message: 'Invalid employee IDs' });
+      }
+      division.employeeIds = employeeIds;
+    }
+    await division.save();
+    const updatedDivision = await Division.findById(req.params.id)
+      .populate('managerId', 'nomComplet grade missionPoste dateNaissance sexe email numeroTelephone dateRecrutement diplome affectation situationFamiliale formationInitiale activitePrincipale cin ppr adresse experienceExterne experienceInterne')
+      .populate('employeeIds', 'nomComplet grade');
+    res.status(200).json(updatedDivision);
+  } catch (err) {
+    console.error('Error updating division:', err);
+    res.status(400).json({ message: 'Invalid data', error: err.message });
   }
 };
 
 exports.deleteDivision = async (req, res) => {
   try {
-    const division = await Division.findByIdAndDelete(req.params.id);
-    if (!division) return res.status(404).json({ message: 'Division not found' });
-    res.json({ message: 'Division deleted' });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    const division = await Division.findById(req.params.id).populate('employeeIds').populate('managerId');
+    if (!division) {
+      return res.status(404).json({ message: 'Division not found' });
+    }
+    if (division.isSeeded) {
+      return res.status(403).json({ message: 'Cannot delete seeded divisions' });
+    }
+    if (division.employeeIds.length > 0 || division.managerId) {
+      return res.status(400).json({ message: 'Cannot delete division with employees or a manager' });
+    }
+    await Division.findByIdAndDelete(req.params.id);
+    res.status(200).json({ message: 'Division deleted' });
+  } catch (err) {
+    console.error('Error deleting division:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+exports.getEmployees = async (req, res) => {
+  try {
+    const employees = await Employee.find({}, 'nomComplet divisionId grade sexe dateNaissance missionPoste affectation')
+      .populate('divisionId', 'name'); // Populate divisionId with name
+    res.status(200).json(employees);
+  } catch (err) {
+    console.error('Error fetching employees:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+exports.searchEmployees = async (req, res) => {
+  try {
+    const { query, grade, divisionId } = req.query;
+    const searchCriteria = {};
+    if (query) {
+      searchCriteria.nomComplet = { $regex: query, $options: 'i' };
+    }
+    if (grade) {
+      searchCriteria.grade = { $in: grade.split(',') };
+    }
+    if (divisionId) {
+      searchCriteria.divisionId = mongoose.Types.ObjectId.isValid(divisionId)
+        ? mongoose.Types.ObjectId(divisionId)
+        : divisionId;
+    }
+    const employees = await Employee.find(searchCriteria, 'nomComplet divisionId grade')
+      .populate('divisionId', 'name');
+    console.log('Search query:', { query, grade, divisionId }, 'Results:', employees);
+    res.status(200).json(employees);
+  } catch (err) {
+    console.error('Error searching employees:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 };

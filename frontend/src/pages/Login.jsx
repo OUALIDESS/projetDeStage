@@ -18,14 +18,15 @@ const Login = () => {
     }
     try {
       console.log('Sending login request:', { email, password });
-      const response = await axios.post('/api/auth/login', { email, password }, {
+      const response = await axios.post('http://localhost:5000/api/auth/login', { email, password }, {
         headers: {
           'Content-Type': 'application/json',
         },
-        withCredentials: true, // Remove if not using credentials
+        withCredentials: true,
       });
       console.log('Login response:', response.data);
       localStorage.setItem('token', response.data.token);
+      localStorage.setItem('username', response.data.user.name); // Store "Admin User"
       navigate('/employees');
     } catch (error) {
       console.error('Login error:', {
@@ -33,7 +34,13 @@ const Login = () => {
         data: error.response?.data,
         message: error.message,
       });
-      setError(error.response?.data?.message || 'Invalid credentials or server error.');
+      if (error.response?.status === 429) {
+        setError('Too many login attempts. Please wait and try again.');
+      } else if (error.response?.status === 400) {
+        setError('Invalid email or password. Please check your credentials.');
+      } else {
+        setError(error.response?.data?.message || 'Login failed. Please try again.');
+      }
     }
   };
 

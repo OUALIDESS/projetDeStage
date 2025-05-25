@@ -1,16 +1,75 @@
-// src/components/Sidebar.jsx
 import 'bootstrap/dist/css/bootstrap.min.css';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
+import { Modal, Button, Form, Alert } from 'react-bootstrap';
+import axios from 'axios';
 import {
   BsColumnsGap, BsPeople, BsGrid, BsBriefcase, BsPersonCheck, BsBarChartLine,
-  BsGear, BsServer, BsBoxArrowRight, BsChevronDown, BsChevronUp, BsList, BsX
+  BsGear, BsServer, BsBoxArrowRight, BsChevronDown, BsChevronUp, BsList, BsX,
+  BsPlus, BsTrash
 } from 'react-icons/bs';
 
 export default function Sidebar({ collapsed, onToggle }) {
   const [divOpen, setDivOpen] = useState(false);
   const [cabinetOpen, setCabinetOpen] = useState(false);
   const [serviceOpen, setServiceOpen] = useState(false);
+  const [divisions, setDivisions] = useState([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newDivisionName, setNewDivisionName] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    fetchDivisions();
+  }, []);
+
+  const fetchDivisions = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://localhost:5000/api/divisions', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setDivisions(response.data);
+    } catch (err) {
+      console.error('Fetch divisions error:', err.response?.data || err);
+      setError('Failed to fetch divisions: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  const handleAddDivision = async () => {
+    if (!newDivisionName) {
+      setError('Division name is required');
+      return;
+    }
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post('http://localhost:5000/api/divisions', { name: newDivisionName }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setNewDivisionName('');
+      setShowAddModal(false);
+      setError('');
+      fetchDivisions();
+    } catch (err) {
+      console.error('Add division error:', err.response?.data || err);
+      setError('Failed to add division: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  const handleDeleteDivision = async (id) => {
+    if (window.confirm('Are you sure you want to delete this division?')) {
+      try {
+        const token = localStorage.getItem('token');
+        await axios.delete(`http://localhost:5000/api/divisions/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setError('');
+        fetchDivisions();
+      } catch (err) {
+        console.error('Delete division error:', err.response?.data || err);
+        setError('Failed to delete division: ' + (err.response?.data?.message || err.message));
+      }
+    }
+  };
 
   const IconWrapper = ({ children }) => (
     <div style={{ width: '20px', height: '20px', minWidth: '20px' }}
@@ -26,7 +85,6 @@ export default function Sidebar({ collapsed, onToggle }) {
   };
   const iconClass = isActive => isActive ? 'text-black' : 'text-secondary';
 
-  const divisions = ["DAEC","DAI","DAS","DCT","DFL","DPE","DRHF","DUE"];
   const cabinetItems = [
     { name: 'Arrivée', path: 'Arrivee' },
     { name: 'Cellule de protocole', path: 'CelluleDeProtocole' },
@@ -90,6 +148,7 @@ export default function Sidebar({ collapsed, onToggle }) {
 
       {/* Links */}
       <div className="flex-grow-1 overflow-auto p-2" style={{ paddingBottom: '4rem' }}>
+        {error && <Alert variant="danger" className="mb-2">{error}</Alert>}
         <NavLink to="/pages/Dashboard" className={({ isActive }) => linkClass(isActive)}>
           {({ isActive }) => (
             <>
@@ -145,16 +204,35 @@ export default function Sidebar({ collapsed, onToggle }) {
         </button>
         {divOpen && !collapsed && (
           <div className="ms-4 mb-2">
-            {divisions.map(d => (
-              <NavLink
-                key={d}
-                to={`/pages/divisions/${d}`}
-                className={({ isActive }) => linkClass(isActive)}
-                style={{ fontSize: '0.8rem', padding: '0.25rem 1rem' }}
-              >
-                {d}
-              </NavLink>
+            {divisions.map((division) => (
+              <div key={division._id} className="d-flex align-items-center mb-1">
+                <NavLink
+                  to={`/pages/divisions/${division.name}`}
+                  className={({ isActive }) => linkClass(isActive)}
+                  style={{ fontSize: '0.8rem', padding: '0.25rem 1rem' }}
+                >
+                  {division.name}
+                </NavLink>
+                {!division.isSeeded && (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    className="ms-2 p-1"
+                    onClick={() => handleDeleteDivision(division._id)}
+                  >
+                    <BsTrash size={12} />
+                  </Button>
+                )}
+              </div>
             ))}
+            <Button
+              variant="success"
+              size="sm"
+              className="mt-2 w-100"
+              onClick={() => setShowAddModal(true)}
+            >
+              <BsPlus size={12} /> Add Division
+            </Button>
           </div>
         )}
 
@@ -238,6 +316,31 @@ export default function Sidebar({ collapsed, onToggle }) {
           )}
         </NavLink>
       </div>
+
+      {/* Add Division Modal */}
+      <Modal show={showAddModal} onHide={() => { setShowAddModal(false); setError(''); }} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Add New Division</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {error && <Alert variant="danger">{error}</Alert>}
+          <Form onSubmit={(e) => { e.preventDefault(); handleAddDivision(); }}>
+            <Form.Group className="mb-3">
+              <Form.Label>Division Name</Form.Label>
+              <Form.Control
+                type="text"
+                value={newDivisionName}
+                onChange={(e) => setNewDivisionName(e.target.value)}
+                placeholder="Enter division name"
+                required
+              />
+            </Form.Group>
+            <Button variant="primary" type="submit">
+              Add
+            </Button>
+          </Form>
+        </Modal.Body>
+      </Modal>
     </nav>
-);
+  );
 }

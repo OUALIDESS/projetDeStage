@@ -1,13 +1,9 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+const Chef = require('../models/Chef');
 
 const login = async (req, res) => {
-  const User = require('../models/User');
-  const Chef = require('../models/Chef');
-
-
- 
-
   const { email, password } = req.body;
   console.log('Login attempt:', { email, password });
 
@@ -42,7 +38,7 @@ const login = async (req, res) => {
     const role = isChef ? 'chef' : user.role;
     const token = jwt.sign(
       { id: user._id, role },
-      'your_jwt_secret',
+      process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
     console.log('Token generated for:', { id: user._id, role });
@@ -53,7 +49,5 @@ const login = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
-module.exports = {
-  login,
 
-};
+module.exports = { login };

@@ -1,12 +1,12 @@
+require('dotenv').config();
 const mongoose = require('mongoose');
 const Employee = require('./models/Employee');
 const Division = require('./models/Division');
 const User = require('./models/User');
-require('dotenv').config();
 
 const verifyData = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/employee-management');
+    await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/employee_management');
     console.log('Users:', await User.countDocuments());
     console.log('Employees:', await Employee.countDocuments());
     console.log('Divisions:', await Division.countDocuments());

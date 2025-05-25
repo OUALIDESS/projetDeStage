@@ -13,24 +13,21 @@ import { Button, Form, Modal, Badge, Dropdown, ButtonGroup } from 'react-bootstr
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 
-const PREDEFINED_GRADES = [
-  'Ingénieur junior',
-  'Ingénieur confirmé',
-  'Senior',
-  'Manager',
-  'Directeur',
-];
-
 const GRADE_COLORS = {
-  'Ingénieur junior': '#6c757d',
-  'Ingénieur confirmé': '#0dcaf0',
-  'Senior': '#0d6efd',
   'Manager': '#ffc107',
-  'Directeur': '#212529',
+  'Manager RH': '#212529',
+  'Analyste': '#0d6efd',
+  'Technicienne': '#6c757d',
+  'Consultant': '#0dcaf0',
+  'Analyste Financier': '#e15759',
+  'Coordinatrice': '#76b7b2',
+  'Assistante RH': '#59a14f',
+  'Architecte': '#edc949',
 };
 
 const GradeManagement = () => {
   const [employees, setEmployees] = useState([]);
+  const [grades, setGrades] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortAsc, setSortAsc] = useState(true);
   const [selectedGrades, setSelectedGrades] = useState([]);
@@ -41,25 +38,36 @@ const GradeManagement = () => {
   const [editEmployee, setEditEmployee] = useState(null);
   const [formData, setFormData] = useState({
     nomComplet: '',
-    grade: PREDEFINED_GRADES[0],
-    seniority: 1,
+    grade: '',
+    missionPoste: '',
+    affectation: '',
+    divisionId: '',
   });
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const fetchEmployees = async () => {
+    const fetchData = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await axios.get('/api/employees', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setEmployees(response.data);
+        const [employeesResponse, gradesResponse] = await Promise.all([
+          axios.get('http://localhost:5000/api/divisions/employees', {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          axios.get('http://localhost:5000/api/grades', {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+        setEmployees(employeesResponse.data);
+        setGrades(gradesResponse.data);
+        if (gradesResponse.data.length > 0) {
+          setFormData(prev => ({ ...prev, grade: gradesResponse.data[0].name }));
+        }
       } catch (error) {
-        setError('Failed to fetch employees');
-        console.error('Error fetching employees:', error);
+        setError('Failed to fetch data');
+        console.error('Error fetching data:', error);
       }
     };
-    fetchEmployees();
+    fetchData();
   }, []);
 
   const toggleGradeFilter = (grade) => {
@@ -90,8 +98,10 @@ const GradeManagement = () => {
     setEditEmployee(null);
     setFormData({
       nomComplet: '',
-      grade: PREDEFINED_GRADES[0],
-      seniority: 1,
+      grade: grades[0]?.name || '',
+      missionPoste: '',
+      affectation: '',
+      divisionId: '',
     });
     setShowFormModal(true);
   };
@@ -101,13 +111,16 @@ const GradeManagement = () => {
     setFormData({
       nomComplet: emp.nomComplet,
       grade: emp.grade,
-      seniority: emp.seniority,
+      missionPoste: emp.missionPoste,
+      affectation: emp.affectation,
+      divisionId: emp.divisionId?._id || '',
     });
     setShowFormModal(true);
   };
 
   const openDetailsModal = (emp) => {
-    setSelectedEmployee(emp);
+    console.log('Opening details for:', emp); // Debug log
+    setSelectedEmployee(emp || null); // Ensure emp is not undefined
     setShowDetailsModal(true);
   };
 
@@ -134,11 +147,13 @@ const GradeManagement = () => {
 
   const exportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(
-      sorted.map(({ _id, nomComplet, grade, seniority }) => ({
+      sorted.map(({ _id, nomComplet, grade, missionPoste, affectation, divisionId }) => ({
         ID: _id,
         Nom: nomComplet,
         Grade: grade,
-        Ancienneté: seniority,
+        Mission: missionPoste,
+        Affectation: affectation,
+        Division: divisionId?.name || 'N/A',
       }))
     );
     const wb = XLSX.utils.book_new();
@@ -147,14 +162,19 @@ const GradeManagement = () => {
   };
 
   const saveEmployee = async () => {
-    if (!formData.nomComplet.trim()) return;
+    if (!formData.nomComplet.trim()) {
+      setError('Nom is required');
+      return;
+    }
 
     try {
       const token = localStorage.getItem('token');
       const updatedEmployee = {
         nomComplet: formData.nomComplet,
         grade: formData.grade,
-        seniority: Number(formData.seniority),
+        missionPoste: formData.missionPoste,
+        affectation: formData.affectation,
+        divisionId: formData.divisionId || null,
         history: editEmployee?.history || [],
       };
 
@@ -189,6 +209,7 @@ const GradeManagement = () => {
         setEmployees([...employees, response.data]);
       }
       setShowFormModal(false);
+      setError('');
     } catch (error) {
       setError('Failed to save employee');
       console.error('Error saving employee:', error);
@@ -199,8 +220,8 @@ const GradeManagement = () => {
     <Badge
       bg=""
       style={{
-        backgroundColor: GRADE_COLORS[grade],
-        color: grade === 'Manager' ? '#000' : '#fff',
+        backgroundColor: GRADE_COLORS[grade] || '#6c757d',
+        color: grade === 'Manager' || grade === 'Manager RH' ? '#000' : '#fff',
       }}
     >
       {grade}
@@ -256,13 +277,13 @@ const GradeManagement = () => {
                 <BsFilter className="me-2" /> Grades
               </Dropdown.Toggle>
               <Dropdown.Menu>
-                {PREDEFINED_GRADES.map((grade) => (
+                {grades.map((grade) => (
                   <Dropdown.Item
-                    key={grade}
-                    active={selectedGrades.includes(grade)}
-                    onClick={() => toggleGradeFilter(grade)}
+                    key={grade._id}
+                    active={selectedGrades.includes(grade.name)}
+                    onClick={() => toggleGradeFilter(grade.name)}
                   >
-                    {grade}
+                    {grade.name}
                   </Dropdown.Item>
                 ))}
                 <Dropdown.Divider />
@@ -295,7 +316,9 @@ const GradeManagement = () => {
                 <tr>
                   <th>Nom</th>
                   <th>Grade</th>
-                  <th>Ancienneté</th>
+                  <th>Mission</th>
+                  <th>Division</th>
+                  <th>Affectation</th>
                   <th className="text-center">Actions</th>
                 </tr>
               </thead>
@@ -307,7 +330,9 @@ const GradeManagement = () => {
                       <td>
                         <GradeBadge grade={emp.grade} />
                       </td>
-                      <td>{emp.seniority} ans</td>
+                      <td>{emp.missionPoste || 'N/A'}</td>
+                      <td>{emp.divisionId?.name || 'N/A'}</td>
+                      <td>{emp.affectation || 'N/A'}</td>
                       <td>
                         <div className="d-flex justify-content-center gap-2">
                           <Button
@@ -341,7 +366,7 @@ const GradeManagement = () => {
                 ) : (
                   <tr>
                     <td
-                      colSpan="4"
+                      colSpan="6"
                       className="text-center text-muted py-4"
                     >
                       Aucun employé trouvé
@@ -351,6 +376,63 @@ const GradeManagement = () => {
               </tbody>
             </table>
           </div>
+
+          <Modal
+            show={showDetailsModal}
+            onHide={() => {
+              setShowDetailsModal(false);
+              setSelectedEmployee(null); // Clear selectedEmployee when closing
+            }}
+            centered
+          >
+            <Modal.Header closeButton>
+              <Modal.Title>Détails de l'employé</Modal.Title>
+            </Modal.Header>
+            <Modal.Body>
+              {selectedEmployee ? (
+                <div>
+                  <p>
+                    <strong>Nom :</strong>{' '}
+                    {selectedEmployee.nomComplet}
+                  </p>
+                  <p>
+                    <strong>Grade :</strong>{' '}
+                    {selectedEmployee.grade}
+                  </p>
+                  <p>
+                    <strong>Mission :</strong>{' '}
+                    {selectedEmployee.missionPoste || 'N/A'}
+                  </p>
+                  <p>
+                    <strong>Division :</strong>{' '}
+                    {selectedEmployee.divisionId?.name || 'N/A'}
+                  </p>
+                  <p>
+                    <strong>Affectation :</strong>{' '}
+                    {selectedEmployee.affectation || 'N/A'}
+                  </p>
+                  <hr />
+                  <p>
+                    <strong>Historique des promotions :</strong>
+                  </p>
+                  <ul>
+                    {selectedEmployee.history && selectedEmployee.history.length === 0 ? (
+                      <li>Aucune promotion</li>
+                    ) : (
+                      (selectedEmployee.history || []).map((entry, i) => (
+                        <li key={i}>
+                          {new Date(entry.date).toLocaleDateString()}:{' '}
+                          {entry.from} → {entry.to}
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                </div>
+              ) : (
+                <p className="text-center text-muted">Aucun employé sélectionné</p>
+              )}
+            </Modal.Body>
+          </Modal>
 
           <Modal
             show={showFormModal}
@@ -363,6 +445,7 @@ const GradeManagement = () => {
               </Modal.Title>
             </Modal.Header>
             <Modal.Body>
+              {error && <p className="text-danger">{error}</p>}
               <Form>
                 <Form.Group className="mb-3">
                   <Form.Label>Nom</Form.Label>
@@ -388,23 +471,49 @@ const GradeManagement = () => {
                       })
                     }
                   >
-                    {PREDEFINED_GRADES.map((grade) => (
-                      <option key={grade}>{grade}</option>
+                    {grades.map((grade) => (
+                      <option key={grade._id} value={grade.name}>{grade.name}</option>
                     ))}
                   </Form.Select>
                 </Form.Group>
-                <Form.Group>
-                  <Form.Label>Ancienneté (années)</Form.Label>
+                <Form.Group className="mb-3">
+                  <Form.Label>Mission</Form.Label>
                   <Form.Control
-                    type="number"
-                    min="0"
-                    value={formData.seniority}
+                    type="text"
+                    value={formData.missionPoste}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        seniority: e.target.value,
+                        missionPoste: e.target.value,
                       })
                     }
+                  />
+                </Form.Group>
+                <Form.Group className="mb-3">
+                  <Form.Label>Affectation</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={formData.affectation}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        affectation: e.target.value,
+                      })
+                    }
+                  />
+                </Form.Group>
+                <Form.Group className="mb-3">
+                  <Form.Label>Division ID</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={formData.divisionId}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        divisionId: e.target.value,
+                      })
+                    }
+                    placeholder="Enter Division ID (optional)"
                   />
                 </Form.Group>
               </Form>
@@ -451,50 +560,6 @@ const GradeManagement = () => {
                   Confirmer
                 </Button>
               </div>
-            </Modal.Body>
-          </Modal>
-
-          <Modal
-            show={showDetailsModal}
-            onHide={() => setShowDetailsModal(false)}
-            centered
-          >
-            <Modal.Header closeButton>
-              <Modal.Title>Détails de l'employé</Modal.Title>
-            </Modal.Header>
-            <Modal.Body>
-              {selectedEmployee && (
-                <div>
-                  <p>
-                    <strong>Nom :</strong>{' '}
-                    {selectedEmployee.nomComplet}
-                  </p>
-                  <p>
-                    <strong>Grade :</strong>{' '}
-                    {selectedEmployee.grade}
-                  </p>
-                  <p>
-                    <strong>Ancienneté :</strong>{' '}
-                    {selectedEmployee.seniority} ans
-                  </p>
-                  <hr />
-                  <p>
-                    <strong>Historique des promotions :</strong>
-                  </p>
-                  <ul>
-                    {selectedEmployee.history.length === 0 ? (
-                      <li>Aucune promotion</li>
-                    ) : (
-                      selectedEmployee.history.map((entry, i) => (
-                        <li key={i}>
-                          {new Date(entry.date).toLocaleDateString()}:{' '}
-                          {entry.from} → {entry.to}
-                        </li>
-                      ))
-                    )}
-                  </ul>
-                </div>
-              )}
             </Modal.Body>
           </Modal>
         </div>
