@@ -36,10 +36,10 @@ const login = async (req, res) => {
     }
 
     const role = isChef ? 'chef' : user.role;
+    
     const token = jwt.sign(
       { id: user._id, role },
-      process.env.JWT_SECRET,
-      { expiresIn: '1h' }
+      process.env.JWT_SECRET
     );
     console.log('Token generated for:', { id: user._id, role });
 
