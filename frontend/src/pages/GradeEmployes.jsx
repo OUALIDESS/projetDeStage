@@ -56,6 +56,10 @@ const GradeManagement = ({ theme = "light" }) => {
   });
   const [error, setError] = useState("");
   const [banners, setBanners] = useState([]);
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10); // Number of items per page
+  const [hoveredPaginationButton, setHoveredPaginationButton] = useState(null); // For hover effects
 
   useEffect(() => {
     const fetchData = async () => {
@@ -97,6 +101,7 @@ const GradeManagement = ({ theme = "light" }) => {
         ? prev.filter((g) => g !== grade)
         : [...prev, grade]
     );
+    setCurrentPage(1); // Reset to first page when filters change
   };
 
   const filtered = employees.filter(
@@ -111,8 +116,22 @@ const GradeManagement = ({ theme = "light" }) => {
       : b.nomComplet.localeCompare(a.nomComplet)
   );
 
+  // Pagination logic
+  const totalItems = sorted.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedData = sorted.slice(startIndex, endIndex);
+
+  const handlePageChange = (pageNumber) => {
+    setCurrentPage(pageNumber);
+    // Scroll to the top of the table
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const toggleSort = (asc) => {
     setSortAsc(asc);
+    setCurrentPage(1); // Reset to first page when sorting changes
   };
 
   const openAddModal = () => {
@@ -162,6 +181,10 @@ const GradeManagement = ({ theme = "light" }) => {
         { id: Date.now(), message: `Employé ${selectedEmployee.nomComplet} supprimé avec succès` },
       ]);
       setShowDeleteModal(false);
+      // Adjust current page if necessary after deletion
+      if (paginatedData.length === 1 && currentPage > 1) {
+        setCurrentPage(currentPage - 1);
+      }
     } catch (error) {
       setError("Failed to delete employee");
       console.error("Error deleting employee:", error);
@@ -239,6 +262,7 @@ const GradeManagement = ({ theme = "light" }) => {
       }
       setShowFormModal(false);
       setError("");
+      setCurrentPage(1); // Reset to first page after adding/editing
     } catch (error) {
       setError("Failed to save employee");
       console.error("Error saving employee:", error);
@@ -261,6 +285,7 @@ const GradeManagement = ({ theme = "light" }) => {
 
   const clearGradeFilters = () => {
     setSelectedGrades([]);
+    setCurrentPage(1); // Reset to first page when clearing filters
   };
 
   return (
@@ -399,7 +424,7 @@ const GradeManagement = ({ theme = "light" }) => {
           .delete-card {
             background-color: ${theme === 'dark' ? '#2a2a3a' : '#ffffff'};
             color: ${theme === 'dark' ? '#e0e0e0' : '#212529'};
-            border: 1px solid ${theme === 'dark' ? '#4a4a5a' : '#dee2e6'};
+            border: 1px solid ${theme === 'dark' ? '#3a3a4a' : '#dee2e6'};
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
           }
@@ -461,6 +486,35 @@ const GradeManagement = ({ theme = "light" }) => {
 
           .table-custom .btn-link.text-danger {
             color: ${theme === 'dark' ? '#dc3545' : '#dc3545'} !important;
+          }
+
+          /* Pagination styles (aligned with PageEmployes) */
+          .pagination-container {
+            display: flex;
+            justify-content: center;
+            margin-top: 1rem;
+          }
+
+          .pagination-btn {
+            background-color: transparent;
+            border-color: ${theme === 'dark' ? '#4a4a5a' : '#ced4da'};
+            color: ${theme === 'dark' ? '#e0e0e0' : '#212529'};
+            padding: 0.3rem 0.6rem;
+            margin-right: 0.5rem;
+            border-radius: 4px;
+            transition: background-color 0.3s ease, color 0.3s ease;
+          }
+
+          .pagination-btn:hover:not([disabled]) {
+            background-color: ${theme === 'dark' ? '#3a3a4a' : '#e9ecef'};
+          }
+
+          .pagination-btn:disabled {
+            opacity: 0.65;
+          }
+
+          .pagination-btn.active {
+            font-weight: bold;
           }
         `}
       </style>
@@ -551,8 +605,8 @@ const GradeManagement = ({ theme = "light" }) => {
                 </tr>
               </thead>
               <tbody>
-                {sorted.length > 0 ? (
-                  sorted.map((emp) => (
+                {paginatedData.length > 0 ? (
+                  paginatedData.map((emp) => (
                     <tr key={emp._id}>
                       <td>{emp.nomComplet}</td>
                       <td>
@@ -596,6 +650,44 @@ const GradeManagement = ({ theme = "light" }) => {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls (Styled like PageEmployes) */}
+          {totalItems > itemsPerPage && (
+            <div className="pagination-container">
+              <Button
+                variant="outline-secondary"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                onMouseEnter={() => setHoveredPaginationButton("prev")}
+                onMouseLeave={() => setHoveredPaginationButton(null)}
+                className="pagination-btn"
+              >
+                Précédent
+              </Button>
+              {Array.from({ length: totalPages }, (_, i) => (
+                <Button
+                  key={i + 1}
+                  variant="outline-secondary"
+                  onClick={() => handlePageChange(i + 1)}
+                  onMouseEnter={() => setHoveredPaginationButton(i + 1)}
+                  onMouseLeave={() => setHoveredPaginationButton(null)}
+                  className={`pagination-btn ${currentPage === i + 1 ? "active" : ""}`}
+                >
+                  {i + 1}
+                </Button>
+              ))}
+              <Button
+                variant="outline-secondary"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                onMouseEnter={() => setHoveredPaginationButton("next")}
+                onMouseLeave={() => setHoveredPaginationButton(null)}
+                className="pagination-btn"
+              >
+                Suivant
+              </Button>
+            </div>
+          )}
 
           {banners.map((banner) => (
             <div key={banner.id} className="banner">

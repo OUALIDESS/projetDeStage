@@ -4,27 +4,21 @@ import Sidebar from './Layouts/SideBar';
 import Navbar from './Layouts/Navbar';
 import Footer from './Layouts/Footer';
 import Dashboard from './pages/Dashboard';
-import DAEC from './pages/divisions/DAEC';
-import DAI from './pages/divisions/DAI';
-import DAS from './pages/divisions/DAS';
-import DCT from './pages/divisions/DCT';
-import DFL from './pages/divisions/DFL';
-import DPE from './pages/divisions/DPE';
-import DRHF from './pages/divisions/DRHF';
-import DUE from './pages/divisions/DUE';
+import DivisionPage from './pages/divisions/DivisionPage';
 import Employees from './pages/Employees';
-import Settings from './pages/Settings';
+import Settings from './pages/Historique';
 import Login from './pages/Login';
 import ChefDivisions from './pages/ChefDivisions';
 import GradeEmployes from './pages/GradeEmployes';
 import EmployeeDetails from './pages/EmployeeDetails';
+import Note from './pages/Note';
 
 export default function App() {
   const [collapsed, setCollapsed] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
   const [notifications, setNotifications] = useState([]);
   const [notificationCount, setNotificationCount] = useState(0);
-  const sidebarWidth = collapsed ? 60 : 240;
+  const sidebarWidth = collapsed ? 50 : 200;
   const location = useLocation();
 
   const toggleTheme = () => {
@@ -60,8 +54,6 @@ export default function App() {
     const savedTheme = localStorage.getItem('theme') || 'dark';
     setTheme(savedTheme);
   }, []);
-
-  const isLoginPage = location.pathname === '/login';
 
   return (
     <div
@@ -122,33 +114,33 @@ export default function App() {
                 <main
                   style={{
                     flex: 1,
-                    padding: '24px',
+                    padding: '0 24px 24px',
                     marginTop: '60px',
                     position: 'relative',
                     marginBottom: '60px',
                     backgroundColor: 'var(--background-color)',
                   }}
                 >
-                  <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+                  <div style={{ margin: '0 auto' }}>
                     <Routes>
                       <Route path="/" element={<Navigate to="/login" replace />} />
                       <Route path="/pages/Dashboard" element={<Dashboard theme={theme} />} />
-                      <Route path="/pages/divisions/DAEC" element={<DAEC theme={theme} />} />
-                      <Route path="/pages/divisions/DAI" element={<DAI theme={theme} />} />
-                      <Route path="/pages/divisions/DAS" element={<DAS theme={theme} />} />
-                      <Route path="/pages/divisions/DCT" element={<DCT theme={theme} />} />
-                      <Route path="/pages/divisions/DFL" element={<DFL theme={theme} />} />
-                      <Route path="/pages/divisions/DPE" element={<DPE theme={theme} />} />
-                      <Route path="/pages/divisions/DRHF" element={<DRHF theme={theme} />} />
-                      <Route path="/pages/divisions/DUE" element={<DUE theme={theme} />} />
+                      <Route
+                        path="/pages/divisions/:divisionName"
+                        element={<DivisionPage theme={theme} />}
+                      />
                       <Route path="/pages/ChefDivisions" element={<ChefDivisions theme={theme} />} />
+                      <Route path="/pages/Note" element={<Note theme={theme} />} />
                       <Route
                         path="/pages/Employees"
-                        element={<Employees theme={theme} addNotification={addNotification} />}
+                        element={<Employees theme={theme} addNotification={addNotification} collapsed={collapsed} />}
                       />
-                      <Route path="/employee/:id" element={<EmployeeDetails theme={theme} />} />
+                      <Route
+                        path="/pages/EmployeeDetails/:id"
+                        element={<EmployeeDetails theme={theme} />}
+                      />
                       <Route path="/pages/GradeEmployes" element={<GradeEmployes theme={theme} />} />
-                      <Route path="/pages/settings" element={<Settings theme={theme} />} />
+                      <Route path="/pages/Historique" element={<Settings theme={theme} />} />
                       <Route path="*" element={<Navigate to="/pages/Dashboard" replace />} />
                     </Routes>
                   </div>

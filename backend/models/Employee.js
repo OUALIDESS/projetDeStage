@@ -21,6 +21,8 @@ const employeeSchema = new mongoose.Schema({
   experienceInterne: { type: String },
   divisionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Division', required: true },
   informationsSupplementaires: [{ type: String }],
+  image: { type: String }, 
+  anciennete: { type: Number },
 });
 
 module.exports = mongoose.model('Employee', employeeSchema);

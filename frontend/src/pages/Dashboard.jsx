@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Container, Row, Col, Card, Alert } from "react-bootstrap";
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis,
@@ -7,7 +7,7 @@ import {
 import "bootstrap/dist/css/bootstrap.min.css";
 import axios from "axios";
 
-const COLORS = ['#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc949'];
+const COLORS = ['#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc949', '#af7aa1', '#ff9da7'];
 
 const renderPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
   const RADIAN = Math.PI / 180;
@@ -51,55 +51,10 @@ const Dashboard = ({ theme = "light" }) => {
         const divisions = divisionsResponse.data;
         const employees = employeesResponse.data;
 
-        const totalEmployees = employees.length;
-
-        const employeesByDivision = divisions.map(division => ({
-          name: division.name,
-          value: division.employeeIds.length,
-        }));
-
-        const genderDistribution = [
-          { name: 'Hommes', value: employees.filter(emp => emp.sexe === 'Homme').length },
-          { name: 'Femmes', value: employees.filter(emp => emp.sexe === 'Femme').length },
-        ];
-
-        const gradeCounts = employees.reduce((acc, emp) => {
-          acc[emp.grade] = (acc[emp.grade] || 0) + 1;
-          return acc;
-        }, {});
-        const gradeDistribution = Object.entries(gradeCounts).map(([name, value]) => ({
-          name,
-          value,
-        }));
-
-        const currentYear = new Date().getFullYear();
-        const ageDistribution = [
-          { ageGroup: '<30', hommes: 0, femmes: 0 },
-          { ageGroup: '30-40', hommes: 0, femmes: 0 },
-          { ageGroup: '41-50', hommes: 0, femmes: 0 },
-          { ageGroup: '>50', hommes: 0, femmes: 0 },
-        ];
-
-        employees.forEach(emp => {
-          const birthYear = new Date(emp.dateNaissance).getFullYear();
-          const age = currentYear - birthYear;
-          let ageGroup;
-          if (age < 30) ageGroup = '<30';
-          else if (age <= 40) ageGroup = '30-40';
-          else if (age <= 50) ageGroup = '41-50';
-          else ageGroup = '>50';
-
-          const group = ageDistribution.find(g => g.ageGroup === ageGroup);
-          if (emp.sexe === 'Homme') group.hommes += 1;
-          else if (emp.sexe === 'Femme') group.femmes += 1;
-        });
-
         setDashboardData({
-          totalEmployees,
-          employeesByDivision,
-          genderDistribution,
-          gradeDistribution,
-          ageDistribution,
+          totalEmployees: employees.length,
+          divisions: divisions,
+          employees: employees,
         });
         setLoading(false);
       } catch (err) {
@@ -112,12 +67,78 @@ const Dashboard = ({ theme = "light" }) => {
     fetchData();
   }, []);
 
+  const employeesByDivision = useMemo(() => {
+    if (!dashboardData?.divisions || !dashboardData?.employees) return [];
+    return dashboardData.divisions.map(division => ({
+      name: division.name,
+      value: division.employeeIds.length,
+    }));
+  }, [dashboardData]);
+
+  const genderDistribution = useMemo(() => {
+    if (!dashboardData?.employees) return [];
+    const counts = dashboardData.employees.reduce((acc, emp) => {
+      if (emp.sexe === 'Homme') acc['Homme'] = (acc['Homme'] || 0) + 1;
+      if (emp.sexe === 'Femme') acc['Femme'] = (acc['Femme'] || 0) + 1;
+      return acc;
+    }, { Homme: 0, Femme: 0 });
+    return [
+      { name: 'Hommes', value: counts['Homme'] },
+      { name: 'Femmes', value: counts['Femme'] },
+    ];
+  }, [dashboardData]);
+
+  const gradeDistribution = useMemo(() => {
+    if (!dashboardData?.employees) return [];
+    const gradeCounts = dashboardData.employees.reduce((acc, emp) => {
+      const grade = emp.grade === '' || emp.grade === null || emp.grade === undefined ? 'Non spécifié' : emp.grade;
+      acc[grade] = (acc[grade] || 0) + 1;
+      return acc;
+    }, {});
+    return Object.entries(gradeCounts).map(([name, value]) => ({
+      name,
+      value,
+    }));
+  }, [dashboardData]);
+
+  const ageDistribution = useMemo(() => {
+    if (!dashboardData?.employees) return [];
+    const currentYear = new Date().getFullYear();
+    const ageGroups = [
+      { ageGroup: '<30', hommes: 0, femmes: 0 },
+      { ageGroup: '30-40', hommes: 0, femmes: 0 },
+      { ageGroup: '41-50', hommes: 0, femmes: 0 },
+      { ageGroup: '>50', hommes: 0, femmes: 0 },
+    ];
+
+    dashboardData.employees.forEach(emp => {
+      const birthYear = new Date(emp.dateNaissance).getFullYear();
+      if (isNaN(birthYear)) return;
+      const age = currentYear - birthYear;
+      let ageGroup;
+      if (age < 30) ageGroup = '<30';
+      else if (age <= 40) ageGroup = '30-40';
+      else if (age <= 50) ageGroup = '41-50';
+      else ageGroup = '>50';
+
+      const group = ageGroups.find(g => g.ageGroup === ageGroup);
+      if (emp.sexe === 'Homme') group.hommes += 1;
+      else if (emp.sexe === 'Femme') group.femmes += 1;
+    });
+
+    return ageGroups;
+  }, [dashboardData]);
+
   if (loading) {
     return <div className="text-center mt-5">Loading...</div>;
   }
 
   if (error) {
     return <Alert variant="danger" className="m-3">{error}</Alert>;
+  }
+
+  if (!dashboardData || dashboardData.totalEmployees === 0) {
+    return <Alert variant="info" className="m-3">Aucune donnée disponible pour afficher les graphiques.</Alert>;
   }
 
   const cardStyle = {
@@ -187,7 +208,6 @@ const Dashboard = ({ theme = "light" }) => {
           Tableau de Bord RH
         </h2>
 
-        {/* First Row: Total Employees and Number of Divisions Cards */}
         <Row className="mb-3">
           <Col xs={12} md={6} className="mb-3 mb-md-0">
             <Card
@@ -218,23 +238,27 @@ const Dashboard = ({ theme = "light" }) => {
                   Nombre de Divisions
                 </Card.Title>
                 <h2 className="card-value-alt mt-2" style={{ fontWeight: "700" }}>
-                  {dashboardData.employeesByDivision.length}
+                  {dashboardData.divisions.length}
                 </h2>
               </Card.Body>
             </Card>
           </Col>
         </Row>
 
-        {/* Second Row: Employees by Division BarChart */}
         <Row className="mb-3">
           <Col xs={12}>
-            <Card className="p-3" style={{ ...cardStyle }}>
+            <Card
+              className="p-3"
+              style={hoverIndex === 2 ? { ...cardStyle, ...cardHoverStyle } : cardStyle}
+              onMouseEnter={() => setHoverIndex(2)}
+              onMouseLeave={() => setHoverIndex(null)}
+            >
               <Card.Title className="card-title" style={{ fontWeight: "600" }}>
                 Répartition des Employés par Division
               </Card.Title>
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart
-                  data={dashboardData.employeesByDivision}
+                  data={employeesByDivision}
                   margin={{ top: 10, right: 15, left: 0, bottom: 10 }}
                 >
                   <XAxis dataKey="name" fontSize={12} stroke={theme === 'dark' ? '#a0a0a0' : '#6c757d'} />
@@ -256,19 +280,25 @@ const Dashboard = ({ theme = "light" }) => {
           </Col>
         </Row>
 
-        {/* Third Row: Gender and Grade Distribution PieCharts */}
         <Row className="mb-3">
           {[{
             title: "Répartition Femmes / Hommes",
-            dataKey: dashboardData.genderDistribution,
+            dataKey: genderDistribution,
             colorIndex: 0,
+            hoverIdx: 3,
           }, {
             title: "Répartition par Échelle (Grade)",
-            dataKey: dashboardData.gradeDistribution,
+            dataKey: gradeDistribution,
             colorIndex: 2,
-          }].map(({ title, dataKey, colorIndex }, i) => (
+            hoverIdx: 4,
+          }].map(({ title, dataKey, colorIndex, hoverIdx }, i) => (
             <Col xs={12} md={6} key={i} className="mb-3 mb-md-0">
-              <Card className="p-3" style={{ ...cardStyle }}>
+              <Card
+                className="p-3"
+                style={hoverIndex === hoverIdx ? { ...cardStyle, ...cardHoverStyle } : cardStyle}
+                onMouseEnter={() => setHoverIndex(hoverIdx)}
+                onMouseLeave={() => setHoverIndex(null)}
+              >
                 <Card.Title className="card-title" style={{ fontWeight: "600" }}>
                   {title}
                 </Card.Title>
@@ -301,16 +331,20 @@ const Dashboard = ({ theme = "light" }) => {
           ))}
         </Row>
 
-        {/* Fourth Row: Age Distribution BarChart */}
-        <Row>
+        <Row className="mb-3">
           <Col xs={12}>
-            <Card className="p-3" style={{ ...cardStyle }}>
+            <Card
+              className="p-3"
+              style={hoverIndex === 5 ? { ...cardStyle, ...cardHoverStyle } : cardStyle}
+              onMouseEnter={() => setHoverIndex(5)}
+              onMouseLeave={() => setHoverIndex(null)}
+            >
               <Card.Title className="card-title" style={{ fontWeight: "600" }}>
                 Pyramide des Âges par Sexe
               </Card.Title>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart
-                  data={dashboardData.ageDistribution}
+                  data={ageDistribution}
                   layout="vertical"
                   margin={{ top: 15, right: 20, left: 40, bottom: 15 }}
                 >

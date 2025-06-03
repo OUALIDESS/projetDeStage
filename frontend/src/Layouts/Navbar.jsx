@@ -10,58 +10,132 @@ const Navbar = ({ collapsed, sidebarWidth, theme, toggleTheme, notifications, no
   const [storedNotifications, setStoredNotifications] = useState([]);
   const navigate = useNavigate();
 
-  // Load notifications from localStorage on component mount
+  // Simplified division mapping (just codes)
+  const divisionMap = {
+    DAEC: 'DAI',
+    DAI: 'DAEC',
+    DAS: 'DCT',
+    DCT: 'DAS',
+    DFL: 'DPE',
+    DPE: 'DFL',
+    DRHF: 'DUE',
+    DUE: 'DRHF',
+    Cabinet: 'SG',
+    SG: 'Cabinet',
+  };
+
+  // Load notifications from localStorage when the component mounts
   useEffect(() => {
     const savedNotifications = localStorage.getItem('notifications');
     if (savedNotifications) {
-      setStoredNotifications(JSON.parse(savedNotifications));
+      const notifications = JSON.parse(savedNotifications);
+      const sortedNotifications = notifications.sort((a, b) => new Date(b.date) - new Date(a.date));
+      setStoredNotifications(sortedNotifications);
+    } else {
+      setStoredNotifications([]);
     }
   }, []);
 
-  // Update localStorage whenever notifications change
+  // Update notifications when new ones come in
   useEffect(() => {
     if (notifications.length > 0) {
-      const updatedNotifications = [...storedNotifications, ...notifications];
-      setStoredNotifications(updatedNotifications);
-      localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
+      const updatedNotifications = [...notifications.map(notif => ({
+        ...notif,
+        date: new Date().toLocaleString('fr-FR', { timeZone: 'Africa/Algiers' })
+      })), ...storedNotifications];
+      const sortedNotifications = updatedNotifications.sort((a, b) => new Date(b.date) - new Date(a.date));
+      setStoredNotifications(sortedNotifications);
+      localStorage.setItem('notifications', JSON.stringify(sortedNotifications));
     }
   }, [notifications]);
 
-  // Clear notifications and localStorage
+  // Clear notifications from the UI only (not from localStorage)
   const handleClearNotifications = () => {
-    clearNotifications();
     setStoredNotifications([]);
-    localStorage.removeItem('notifications');
+    setShowNotificationCard(false);
+    markNotificationsAsRead();
+    clearNotifications();
   };
 
+  // Toggle the notification card and mark as read
   const toggleNotificationCard = () => {
     setShowNotificationCard(!showNotificationCard);
     if (!showNotificationCard) {
+      // Reload notifications from localStorage when opening the card
+      const savedNotifications = localStorage.getItem('notifications');
+      if (savedNotifications) {
+        const notifications = JSON.parse(savedNotifications);
+        const sortedNotifications = notifications.sort((a, b) => new Date(b.date) - new Date(a.date));
+        setStoredNotifications(sortedNotifications);
+      }
       markNotificationsAsRead();
     }
   };
 
+  // Toggle the profile dropdown
   const toggleProfileDropdown = () => {
     setShowProfileDropdown(!showProfileDropdown);
   };
 
+  // Navigate to settings
   const handleSettingsClick = () => {
     setShowProfileDropdown(false);
     navigate('/pages/Settings');
   };
 
+  // Show logout confirmation
   const handleLogoutClick = () => {
     setShowProfileDropdown(false);
     setShowLogoutCard(true);
   };
 
+  // Confirm logout
   const confirmLogout = () => {
     setShowLogoutCard(false);
-    navigate('/pages/Login');
+    localStorage.removeItem('token');
+    navigate('/login');
   };
 
+  // Cancel logout
   const cancelLogout = () => {
     setShowLogoutCard(false);
+  };
+
+  // Navigate to settings to see all notifications
+  const handleVoirTout = () => {
+    setShowNotificationCard(false);
+    navigate('/pages/Historique');
+  };
+
+  // Format the 'modify' notification
+  const formatModifyNotification = (notif) => {
+    const changes = Object.entries(notif.data.changes)
+      .filter(([_, value]) => String(value.old) !== String(value.new))
+      .map(([field, value]) => ({
+        field: field === 'divisionId' ? 'Division' : field,
+        old: field === 'divisionId' ? divisionMap[value.old] || value.old : value.old,
+        new: field === 'divisionId' ? divisionMap[value.new] || value.new : value.new,
+      }));
+
+    return (
+      <>
+        Les informations de l'employé {notif.data.nomComplet} ont été modifiées le{' '}
+        <span style={{ fontWeight: 'bold' }}>{notif.date}</span> :
+        <ul style={{ margin: '5px 0', paddingLeft: '20px' }}>
+          {changes.map((change, index) => (
+            <li key={index}>
+              {change.field === 'Image' ? (
+                'Image changer'
+              ) : change.field === 'Division' ? (
+                `Division : modifiée de ${change.old || 'Inconnue'} à ${change.new || 'Inconnue'}`
+              ) : (
+                `${change.field} : ${change.old} à ${change.new}`
+              )}
+            </li>
+          ))}
+        </ul>
+      </>
+    );
   };
 
   return (
@@ -86,7 +160,7 @@ const Navbar = ({ collapsed, sidebarWidth, theme, toggleTheme, notifications, no
           <Button
             variant="link"
             onClick={toggleNotificationCard}
-            className="navbar-icon-button"
+            className="navbar-icon-button position-relative"
             style={{ color: 'var(--text-color)' }}
           >
             <BsBell size={20} style={{ filter: 'drop-shadow(0 1px 1px rgba(0, 0, 0, 0.2))' }} />
@@ -97,7 +171,7 @@ const Navbar = ({ collapsed, sidebarWidth, theme, toggleTheme, notifications, no
                   position: 'absolute',
                   top: '-6px',
                   right: '-6px',
-                  backgroundColor: '#6b46c1',
+                  backgroundColor: theme === 'dark' ? '#6b46c1' : '#dc3545',
                   color: '#ffffff',
                   borderRadius: '50%',
                   width: '22px',
@@ -164,26 +238,22 @@ const Navbar = ({ collapsed, sidebarWidth, theme, toggleTheme, notifications, no
             <p>Aucune nouvelle notification</p>
           ) : (
             <ul style={{ listStyle: 'none', padding: '0', margin: '0', maxHeight: '200px', overflowY: 'auto' }}>
-              {storedNotifications.map((notif) => (
+              {storedNotifications.slice(0, 5).map((notif) => (
                 <li key={notif.id} style={{ padding: '5px 0', borderBottom: '1px solid var(--border-color)' }}>
                   {notif.type === 'add' && `Employé ${notif.data.nomComplet} ajouté avec succès`}
                   {notif.type === 'delete' && `Employé ${notif.data.nomComplet} supprimé avec succès`}
-                  {notif.type === 'modify' && (
-                    <span>
-                      Employé {notif.data.nomComplet}, ses infos seront modifiées :{' '}
-                      {Object.keys(notif.data.changes).map((field, index) => (
-                        <span key={field}>
-                          {field === 'divisionId' && `Division modifiée de '${notif.data.changes[field].old}' à '${notif.data.changes[field].new}'`}
-                          {field !== 'divisionId' && notif.data.changes[field].old !== notif.data.changes[field].new && (
-                            `${field === 'sexe' ? 'Genre' : field.charAt(0).toUpperCase() + field.slice(1)} modifié de '${notif.data.changes[field].old}' à '${notif.data.changes[field].new}'`
-                          )}
-                          {index < Object.keys(notif.data.changes).length - 1 && ', '}
-                        </span>
-                      ))}
-                    </span>
-                  )}
+                  {notif.type === 'modify' && formatModifyNotification(notif)}
                 </li>
               ))}
+              {storedNotifications.length > 5 && (
+                <Button
+                  variant="link"
+                  onClick={handleVoirTout}
+                  style={{ color: 'var(--text-color)', padding: '5px 15px', width: '100%', textAlign: 'left', textDecoration: 'none' }}
+                >
+                  Voir tout
+                </Button>
+              )}
             </ul>
           )}
         </div>
@@ -271,7 +341,7 @@ const Navbar = ({ collapsed, sidebarWidth, theme, toggleTheme, notifications, no
                 <Button
                   variant="danger"
                   onClick={confirmLogout}
-                  style={{ width: '80px', backgroundColor: '#dc3545', borderColor: '#dc3545', color: 'var(--text-color)' }}
+                  style={{ width: '80px', backgroundColor: '#dc3545', borderColor: '#dc3545', color: '#ffffff' }}
                 >
                   Oui
                 </Button>
@@ -304,7 +374,7 @@ const Navbar = ({ collapsed, sidebarWidth, theme, toggleTheme, notifications, no
           }
 
           .navbar-icon-button:hover {
-            background-color: ${theme === 'dark' ? 'rgba(107, 70, 193, 0.2)' : 'rgba(0, 0, 0, 0.05)'};
+            background-color: var(--secondary-bg);
             transform: scale(1.1);
           }
 
@@ -318,26 +388,17 @@ const Navbar = ({ collapsed, sidebarWidth, theme, toggleTheme, notifications, no
 
           .navbar-icon-button:hover .notification-badge {
             transform: scale(1.15);
-            background-color: #8b5cf6;
+            background-color: ${theme === 'dark' ? '#8b5cf6' : '#c82333'};
           }
 
           .profile-menu-item:hover {
-            background-color: ${theme === 'dark' ? 'rgba(107, 70, 193, 0.2)' : 'rgba(0, 0, 0, 0.05)'};
+            background-color: var(--secondary-bg);
           }
 
           @keyframes pulse {
-            0% {
-              transform: scale(1);
-              box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-            }
-            50% {
-              transform: scale(1.05);
-              box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
-            }
-            100% {
-              transform: scale(1);
-              box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-            }
+            0% { transform: scale(1); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3); }
+            50% { transform: scale(1.05); box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4); }
+            100% { transform: scale(1); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3); }
           }
         `}
       </style>

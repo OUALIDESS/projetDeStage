@@ -27,6 +27,7 @@ const seedData = async () => {
       { name: 'Coordinatrice', description: 'Coordinatrice de projets' },
       { name: 'Assistante RH', description: 'Assistante des ressources humaines' },
       { name: 'Architecte', description: 'Architecte urbain' },
+      { name: 'Assistante', description: 'Assistante générale' },
     ];
     const insertedGrades = await Grade.insertMany(grades);
     console.log('Grades inserted:', insertedGrades.length);
@@ -53,7 +54,7 @@ const seedData = async () => {
       console.log('Admin password updated to match admin123');
     }
 
-    // Seed 8 divisions with French descriptions
+    // Seed all 10 divisions with French descriptions (original 8 + new Cabinet and SG)
     const divisions = [
       { name: 'DAEC', currentProject: 'Coordination Administrative', managerId: null, employeeIds: [], isSeeded: true },
       { name: 'DAI', currentProject: 'Analyse d’Infrastructure', managerId: null, employeeIds: [], isSeeded: true },
@@ -63,6 +64,8 @@ const seedData = async () => {
       { name: 'DPE', currentProject: 'Évaluation des Performances', managerId: null, employeeIds: [], isSeeded: true },
       { name: 'DRHF', currentProject: 'Cadre des Ressources Humaines', managerId: null, employeeIds: [], isSeeded: true },
       { name: 'DUE', currentProject: 'Développement Urbain', managerId: null, employeeIds: [], isSeeded: true },
+      { name: 'Cabinet', currentProject: 'Gestion Stratégique', managerId: null, employeeIds: [], isSeeded: true },
+      { name: 'SG', currentProject: 'Coordination Générale', managerId: null, employeeIds: [], isSeeded: true },
     ];
 
     const insertedDivisions = await Division.insertMany(divisions);
@@ -74,7 +77,7 @@ const seedData = async () => {
       return map;
     }, {});
 
-    // Seed 35 employees with French data
+    // Seed all 39 employees with French data, image, and anciennete (35 original + 4 new for Cabinet and SG)
     const employees = [
       {
         nomComplet: 'Ahmed Benali',
@@ -97,6 +100,8 @@ const seedData = async () => {
         experienceInterne: '10 années',
         divisionId: divisionMap['DAEC'],
         informationsSupplementaires: ['Certificat en gestion de projet'],
+        image: 'https://via.placeholder.com/150?text=Ahmed+Benali',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2010-06-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Fatima Zahra',
@@ -119,6 +124,8 @@ const seedData = async () => {
         experienceInterne: '5 années',
         divisionId: divisionMap['DAEC'],
         informationsSupplementaires: ['Formation en analyse de données'],
+        image: 'https://via.placeholder.com/150?text=Fatima+Zahra',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2015-09-10')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Mohammed El Idrissi',
@@ -141,6 +148,8 @@ const seedData = async () => {
         experienceInterne: '12 années',
         divisionId: divisionMap['DAI'],
         informationsSupplementaires: ['Certificat en gestion de projet'],
+        image: 'https://via.placeholder.com/150?text=Mohammed+El+Idrissi',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2008-03-15')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Aicha Bennani',
@@ -163,6 +172,8 @@ const seedData = async () => {
         experienceInterne: '7 années',
         divisionId: divisionMap['DAI'],
         informationsSupplementaires: ['Formation en maintenance'],
+        image: 'https://via.placeholder.com/150?text=Aicha+Bennani',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2013-12-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Youssef Amrani',
@@ -185,6 +196,8 @@ const seedData = async () => {
         experienceInterne: '3 années',
         divisionId: divisionMap['DAS'],
         informationsSupplementaires: ['Certificat en audit de sécurité'],
+        image: 'https://via.placeholder.com/150?text=Youssef+Amrani',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2017-05-20')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Laila Chraibi',
@@ -207,6 +220,8 @@ const seedData = async () => {
         experienceInterne: '8 années',
         divisionId: divisionMap['DAS'],
         informationsSupplementaires: ['Certificat en gestion de sécurité'],
+        image: 'https://via.placeholder.com/150?text=Laila+Chraibi',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2012-08-15')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Khalid Saidi',
@@ -229,6 +244,8 @@ const seedData = async () => {
         experienceInterne: '9 années',
         divisionId: divisionMap['DCT'],
         informationsSupplementaires: ['Formation en mécanique avancée'],
+        image: 'https://via.placeholder.com/150?text=Khalid+Saidi',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2011-10-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Nadia El Fassi',
@@ -251,6 +268,8 @@ const seedData = async () => {
         experienceInterne: '4 années',
         divisionId: divisionMap['DCT'],
         informationsSupplementaires: ['Certificat en finance'],
+        image: 'https://via.placeholder.com/150?text=Nadia+El+Fassi',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2016-04-10')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Omar Tazi',
@@ -273,6 +292,8 @@ const seedData = async () => {
         experienceInterne: '6 années',
         divisionId: divisionMap['DFL'],
         informationsSupplementaires: ['Certificat en logistique'],
+        image: 'https://via.placeholder.com/150?text=Omar+Tazi',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2014-02-20')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Sara Lahlou',
@@ -295,6 +316,8 @@ const seedData = async () => {
         experienceInterne: '2 années',
         divisionId: divisionMap['DFL'],
         informationsSupplementaires: ['Formation en gestion de projets'],
+        image: 'https://via.placeholder.com/150?text=Sara+Lahlou',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2018-07-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Hassan Bouzidi',
@@ -317,6 +340,8 @@ const seedData = async () => {
         experienceInterne: '11 années',
         divisionId: divisionMap['DPE'],
         informationsSupplementaires: ['Certificat en évaluation'],
+        image: 'https://via.placeholder.com/150?text=Hassan+Bouzidi',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2009-11-05')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Zineb Alaoui',
@@ -339,6 +364,8 @@ const seedData = async () => {
         experienceInterne: '5 années',
         divisionId: divisionMap['DPE'],
         informationsSupplementaires: ['Formation en gestion RH'],
+        image: 'https://via.placeholder.com/150?text=Zineb+Alaoui',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2015-01-15')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Rachid Mernissi',
@@ -361,6 +388,8 @@ const seedData = async () => {
         experienceInterne: '13 années',
         divisionId: divisionMap['DRHF'],
         informationsSupplementaires: ['Certificat en stratégie RH'],
+        image: 'https://via.placeholder.com/150?text=Rachid+Mernissi',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2007-04-10')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Meryem Kabbaj',
@@ -383,6 +412,8 @@ const seedData = async () => {
         experienceInterne: '1 année',
         divisionId: divisionMap['DRHF'],
         informationsSupplementaires: ['Formation en gestion administrative'],
+        image: 'https://via.placeholder.com/150?text=Meryem+Kabbaj',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2019-03-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Said Cherkaoui',
@@ -405,6 +436,8 @@ const seedData = async () => {
         experienceInterne: '10 années',
         divisionId: divisionMap['DUE'],
         informationsSupplementaires: ['Certificat en urbanisme'],
+        image: 'https://via.placeholder.com/150?text=Said+Cherkaoui',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2010-09-15')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Asma Bennacer',
@@ -427,6 +460,8 @@ const seedData = async () => {
         experienceInterne: '4 années',
         divisionId: divisionMap['DUE'],
         informationsSupplementaires: ['Formation en architecture'],
+        image: 'https://via.placeholder.com/150?text=Asma+Bennacer',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2016-11-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Karim Essaghir',
@@ -449,6 +484,8 @@ const seedData = async () => {
         experienceInterne: '6 années',
         divisionId: divisionMap['DAEC'],
         informationsSupplementaires: ['Certificat en informatique'],
+        image: 'https://via.placeholder.com/150?text=Karim+Essaghir',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2016-03-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Hanan Riad',
@@ -471,6 +508,8 @@ const seedData = async () => {
         experienceInterne: '2 années',
         divisionId: divisionMap['DAEC'],
         informationsSupplementaires: ['Formation en gestion de projets'],
+        image: 'https://via.placeholder.com/150?text=Hanan+Riad',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2020-01-15')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Ilyas Mansour',
@@ -493,6 +532,8 @@ const seedData = async () => {
         experienceInterne: '8 années',
         divisionId: divisionMap['DAI'],
         informationsSupplementaires: ['Formation en génie civil'],
+        image: 'https://via.placeholder.com/150?text=Ilyas+Mansour',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2013-07-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Sanae Idrissi',
@@ -515,6 +556,8 @@ const seedData = async () => {
         experienceInterne: '3 années',
         divisionId: divisionMap['DAI'],
         informationsSupplementaires: ['Certificat en statistiques'],
+        image: 'https://via.placeholder.com/150?text=Sanae+Idrissi',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2018-02-10')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Adil Zaki',
@@ -537,6 +580,8 @@ const seedData = async () => {
         experienceInterne: '7 années',
         divisionId: divisionMap['DAS'],
         informationsSupplementaires: ['Formation en sécurité'],
+        image: 'https://via.placeholder.com/150?text=Adil+Zaki',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2015-06-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Noura Benjelloun',
@@ -559,6 +604,8 @@ const seedData = async () => {
         experienceInterne: '3 années',
         divisionId: divisionMap['DAS'],
         informationsSupplementaires: ['Certificat en audit'],
+        image: 'https://via.placeholder.com/150?text=Noura+Benjelloun',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2019-05-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Badr Eddine',
@@ -581,6 +628,8 @@ const seedData = async () => {
         experienceInterne: '8 années',
         divisionId: divisionMap['DCT'],
         informationsSupplementaires: ['Formation en mécanique'],
+        image: 'https://via.placeholder.com/150?text=Badr+Eddine',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2012-09-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Rim El Amrani',
@@ -603,6 +652,8 @@ const seedData = async () => {
         experienceInterne: '3 années',
         divisionId: divisionMap['DCT'],
         informationsSupplementaires: ['Certificat en finance'],
+        image: 'https://via.placeholder.com/150?text=Rim+El+Amrani',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2018-03-15')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Amine Khattabi',
@@ -625,6 +676,8 @@ const seedData = async () => {
         experienceInterne: '6 années',
         divisionId: divisionMap['DFL'],
         informationsSupplementaires: ['Formation en logistique'],
+        image: 'https://via.placeholder.com/150?text=Amine+Khattabi',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2016-02-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Leila Hassani',
@@ -647,6 +700,8 @@ const seedData = async () => {
         experienceInterne: '1 année',
         divisionId: divisionMap['DFL'],
         informationsSupplementaires: ['Certificat en analyse financière'],
+        image: 'https://via.placeholder.com/150?text=Leila+Hassani',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2021-06-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Tarek Benhima',
@@ -669,6 +724,8 @@ const seedData = async () => {
         experienceInterne: '9 années',
         divisionId: divisionMap['DPE'],
         informationsSupplementaires: ['Certificat en évaluation'],
+        image: 'https://via.placeholder.com/150?text=Tarek+Benhima',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2011-04-15')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Imane Zaki',
@@ -691,6 +748,8 @@ const seedData = async () => {
         experienceInterne: '4 années',
         divisionId: divisionMap['DPE'],
         informationsSupplementaires: ['Formation en statistiques'],
+        image: 'https://via.placeholder.com/150?text=Imane+Zaki',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2017-08-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Yassine Bennis',
@@ -713,6 +772,8 @@ const seedData = async () => {
         experienceInterne: '8 années',
         divisionId: divisionMap['DRHF'],
         informationsSupplementaires: ['Certificat en gestion RH'],
+        image: 'https://via.placeholder.com/150?text=Yassine+Bennis',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2013-05-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Khadija El Hafidi',
@@ -735,6 +796,8 @@ const seedData = async () => {
         experienceInterne: '1 année',
         divisionId: divisionMap['DRHF'],
         informationsSupplementaires: ['Formation en gestion administrative'],
+        image: 'https://via.placeholder.com/150?text=Khadija+El+Hafidi',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2021-03-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Mehdi Fassi',
@@ -757,6 +820,8 @@ const seedData = async () => {
         experienceInterne: '7 années',
         divisionId: divisionMap['DUE'],
         informationsSupplementaires: ['Certificat en architecture'],
+        image: 'https://via.placeholder.com/150?text=Mehdi+Fassi',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2014-07-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Amina Sefrioui',
@@ -779,6 +844,8 @@ const seedData = async () => {
         experienceInterne: '3 années',
         divisionId: divisionMap['DUE'],
         informationsSupplementaires: ['Formation en urbanisme'],
+        image: 'https://via.placeholder.com/150?text=Amina+Sefrioui',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2018-09-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Hicham Laaroussi',
@@ -801,6 +868,8 @@ const seedData = async () => {
         experienceInterne: '9 années',
         divisionId: divisionMap['DAEC'],
         informationsSupplementaires: ['Certificat en gestion administrative'],
+        image: 'https://via.placeholder.com/150?text=Hicham+Laaroussi',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2011-02-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Samira Jilali',
@@ -823,6 +892,8 @@ const seedData = async () => {
         experienceInterne: '3 années',
         divisionId: divisionMap['DAEC'],
         informationsSupplementaires: ['Formation en analyse de données'],
+        image: 'https://via.placeholder.com/150?text=Samira+Jilali',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2019-04-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
       {
         nomComplet: 'Walid Cherif',
@@ -845,6 +916,106 @@ const seedData = async () => {
         experienceInterne: '5 années',
         divisionId: divisionMap['DAI'],
         informationsSupplementaires: ['Formation en génie civil'],
+        image: 'https://via.placeholder.com/150?text=Walid+Cherif',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2017-01-15')) / (1000 * 60 * 60 * 24 * 365)),
+      },
+      // New employees for Cabinet division
+      {
+        nomComplet: 'Nabil El Khattabi',
+        dateNaissance: new Date('1976-05-20'),
+        sexe: 'Homme',
+        grade: 'Manager',
+        dateRecrutement: new Date('2012-03-01'),
+        diplome: 'Master en Stratégie',
+        affectation: 'Gestion stratégique',
+        situationFamiliale: 'Marié',
+        missionPoste: 'Superviser les initiatives stratégiques',
+        formationInitiale: 'École Nationale de Commerce et de Gestion',
+        activitePrincipale: 'Planification stratégique',
+        cin: 'NE123462',
+        ppr: 'PPR036',
+        adresse: 'Avenue Mohammed V, Rabat',
+        email: 'nabil.elkhattabi@example.com',
+        numeroTelephone: '+212600123462',
+        experienceExterne: '6 années chez StratCorp',
+        experienceInterne: '9 années',
+        divisionId: divisionMap['Cabinet'],
+        informationsSupplementaires: ['Certificat en gestion stratégique'],
+        image: 'https://via.placeholder.com/150?text=Nabil+El+Khattabi',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2012-03-01')) / (1000 * 60 * 60 * 24 * 365)),
+      },
+      {
+        nomComplet: 'Hafsa Bennani',
+        dateNaissance: new Date('1989-07-15'),
+        sexe: 'Femme',
+        grade: 'Consultant',
+        dateRecrutement: new Date('2018-06-01'),
+        diplome: 'Master en Management',
+        affectation: 'Conseil stratégique',
+        situationFamiliale: 'Célibataire',
+        missionPoste: 'Fournir des conseils stratégiques',
+        formationInitiale: 'Université Al Akhawayn',
+        activitePrincipale: 'Analyse et recommandations',
+        cin: 'HB789017',
+        ppr: 'PPR037',
+        adresse: 'Rue Al Amal, Casablanca',
+        email: 'hafsa.bennani@example.com',
+        numeroTelephone: '+212600789017',
+        experienceExterne: '2 années chez ConsultCorp',
+        experienceInterne: '4 années',
+        divisionId: divisionMap['Cabinet'],
+        informationsSupplementaires: ['Formation en gestion stratégique'],
+        image: 'https://via.placeholder.com/150?text=Hafsa+Bennani',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2018-06-01')) / (1000 * 60 * 60 * 24 * 365)),
+      },
+      // New employees for SG division
+      {
+        nomComplet: 'Oussama El Fassi',
+        dateNaissance: new Date('1978-09-10'),
+        sexe: 'Homme',
+        grade: 'Manager',
+        dateRecrutement: new Date('2013-04-01'),
+        diplome: 'Master en Administration',
+        affectation: 'Coordination générale',
+        situationFamiliale: 'Marié',
+        missionPoste: 'Superviser la coordination générale',
+        formationInitiale: 'École Nationale de Commerce',
+        activitePrincipale: 'Gestion des opérations générales',
+        cin: 'OE345682',
+        ppr: 'PPR038',
+        adresse: 'Avenue Hassan II, Marrakech',
+        email: 'oussama.elfassi@example.com',
+        numeroTelephone: '+212600345682',
+        experienceExterne: '5 années chez AdminCorp',
+        experienceInterne: '8 années',
+        divisionId: divisionMap['SG'],
+        informationsSupplementaires: ['Certificat en administration'],
+        image: 'https://via.placeholder.com/150?text=Oussama+El+Fassi',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2013-04-01')) / (1000 * 60 * 60 * 24 * 365)),
+      },
+      {
+        nomComplet: 'Fatima El Amrani',
+        dateNaissance: new Date('1992-02-18'),
+        sexe: 'Femme',
+        grade: 'Assistante',
+        dateRecrutement: new Date('2020-05-01'),
+        diplome: 'Licence en Gestion',
+        affectation: 'Support administratif',
+        situationFamiliale: 'Célibataire',
+        missionPoste: 'Assister dans la coordination générale',
+        formationInitiale: 'Université Mohammed V',
+        activitePrincipale: 'Gestion administrative',
+        cin: 'FE901239',
+        ppr: 'PPR039',
+        adresse: 'Rue Ibn Battuta, Fès',
+        email: 'fatima.elamrani@example.com',
+        numeroTelephone: '+212600901239',
+        experienceExterne: '1 année chez AdminTech',
+        experienceInterne: '2 années',
+        divisionId: divisionMap['SG'],
+        informationsSupplementaires: ['Formation en gestion administrative'],
+        image: 'https://via.placeholder.com/150?text=Fatima+El+Amrani',
+        anciennete: Math.floor((new Date('2025-06-02') - new Date('2020-05-01')) / (1000 * 60 * 60 * 24 * 365)),
       },
     ];
 
@@ -861,6 +1032,8 @@ const seedData = async () => {
       'DPE': 'hassan.bouzidi@example.com',
       'DRHF': 'rachid.mernissi@example.com',
       'DUE': 'said.cherkaoui@example.com',
+      'Cabinet': 'nabil.elkhattabi@example.com',
+      'SG': 'oussama.elfassi@example.com',
     };
 
     for (const employee of insertedEmployees) {

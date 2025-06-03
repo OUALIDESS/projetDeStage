@@ -76,7 +76,8 @@ exports.updateDivision = async (req, res) => {
     if (!division) {
       return res.status(404).json({ message: 'Division not found' });
     }
-    if (division.isSeeded) {
+    // Allow updates to seeded divisions if the allowSeededUpdate header is set to 'true'
+    if (division.isSeeded && req.headers.allowseededupdate !== 'true') {
       return res.status(403).json({ message: 'Cannot modify seeded divisions' });
     }
     if (managerId) {

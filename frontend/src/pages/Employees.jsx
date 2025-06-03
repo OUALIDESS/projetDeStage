@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Table, Button, Modal, Form, Alert, Dropdown, ButtonGroup, Card } from 'react-bootstrap';
 import axios from 'axios';
@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import { BsPlus, BsDownload, BsEye, BsPencil, BsTrash, BsSortAlphaDown, BsSortAlphaUp, BsFilter, BsX } from 'react-icons/bs';
 
-const PageEmployes = ({ theme = 'light', addNotification }) => {
+const PageEmployes = ({ theme = 'light', addNotification, collapsed }) => {
   const [employes, setEmployes] = useState([]);
   const [divisions, setDivisions] = useState([]);
   const [afficherModal, setAfficherModal] = useState(false);
@@ -14,27 +14,14 @@ const PageEmployes = ({ theme = 'light', addNotification }) => {
   const [afficherCarteSuppression, setAfficherCarteSuppression] = useState(false);
   const [idSuppression, setIdSuppression] = useState(null);
   const [employeActuel, setEmployeActuel] = useState(null);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
   const [donneesFormulaire, setDonneesFormulaire] = useState({
-    nomComplet: '',
-    dateNaissance: '',
-    sexe: '',
-    grade: '',
-    dateRecrutement: '',
-    diplome: '',
-    affectation: '',
-    situationFamiliale: '',
-    missionPoste: '',
-    formationInitiale: '',
-    activitePrincipale: '',
-    cin: '',
-    ppr: '',
-    adresse: '',
-    email: '',
-    numeroTelephone: '',
-    experienceExterne: '',
-    experienceInterne: '',
-    divisionId: '',
-    informationsSupplementaires: '',
+    nomComplet: '', dateNaissance: '', sexe: '', grade: '', dateRecrutement: '',
+    diplome: '', affectation: '', situationFamiliale: '', missionPoste: '',
+    formationInitiale: '', activitePrincipale: '', cin: '', ppr: '', adresse: '',
+    email: '', numeroTelephone: '', experienceExterne: '', experienceInterne: '',
+    divisionId: '', informationsSupplementaires: '', image: '', anciennete: '',
   });
   const [erreur, setErreur] = useState('');
   const [filtres, setFiltres] = useState({ nomComplet: '', ppr: '', affectation: '', divisionId: '' });
@@ -42,7 +29,32 @@ const PageEmployes = ({ theme = 'light', addNotification }) => {
   const [employesParPage] = useState(5);
   const [triAscendant, setTriAscendant] = useState(true);
   const [banners, setBanners] = useState([]);
+  const [showExportCard, setShowExportCard] = useState(false);
+  const [retryCount, setRetryCount] = useState({ employes: 0, divisions: 0 });
+  const [hoveredButton, setHoveredButton] = useState(null);
+  const [hoveredTableRow, setHoveredTableRow] = useState(null);
+  const [hoveredDropdownItem, setHoveredDropdownItem] = useState(null);
+  const [hoveredDeleteButton, setHoveredDeleteButton] = useState(false);
+  const [hoveredCancelButton, setHoveredCancelButton] = useState(false);
+  const [hoveredPaginationButton, setHoveredPaginationButton] = useState(null);
   const navigate = useNavigate();
+
+  // Calculate available width based on sidebar state
+  const sidebarWidth = collapsed ? 50 : 200;
+  const [tableContainerWidth, setTableContainerWidth] = useState(window.innerWidth - sidebarWidth);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setTableContainerWidth(window.innerWidth - sidebarWidth);
+    };
+
+    // Update width when sidebar state changes or window resizes
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [collapsed, sidebarWidth]);
+
+  const MAX_RETRIES = 3;
 
   useEffect(() => {
     if (!localStorage.getItem('token')) navigate('/');
@@ -51,35 +63,98 @@ const PageEmployes = ({ theme = 'light', addNotification }) => {
   }, [navigate]);
 
   const recupererDivisions = async () => {
+    if (retryCount.divisions >= MAX_RETRIES) {
+      setErreur('Échec de la récupération des divisions après plusieurs tentatives.');
+      return;
+    }
     try {
       const token = localStorage.getItem('token');
-      const reponse = await axios.get('http://localhost:5000/api/divisions', { headers: { Authorization: `Bearer ${token}` } });
+      const reponse = await axios.get('http://localhost:5000/api/divisions', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setDivisions(reponse.data);
+      setRetryCount((prev) => ({ ...prev, divisions: 0 }));
     } catch (err) {
       setErreur('Échec de la récupération des divisions : ' + (err.response?.data?.message || err.message));
+      setRetryCount((prev) => ({ ...prev, divisions: prev.divisions + 1 }));
       setTimeout(recupererDivisions, 2000);
     }
   };
 
   const recupererEmployes = async () => {
+    if (retryCount.employes >= MAX_RETRIES) {
+      setErreur('Échec de la récupération des employés après plusieurs tentatives.');
+      return;
+    }
     try {
       const token = localStorage.getItem('token');
-      const reponse = await axios.get('http://localhost:5000/api/employees', { headers: { Authorization: `Bearer ${token}` } });
+      const reponse = await axios.get('http://localhost:5000/api/employees', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setEmployes(reponse.data);
+      setRetryCount((prev) => ({ ...prev, employes: 0 }));
     } catch (err) {
       setErreur('Échec de la récupération des employés : ' + (err.response?.data?.message || err.message));
+      setRetryCount((prev) => ({ ...prev, employes: prev.employes + 1 }));
+      setTimeout(recupererEmployes, 2000);
     }
   };
 
-  const gererChangementInput = (e) => setDonneesFormulaire({ ...donneesFormulaire, [e.target.name]: e.target.value });
+  const calculateAnciennete = (dateRecrutement) => {
+    if (!dateRecrutement || isNaN(new Date(dateRecrutement).getTime())) return 'N/A';
+    const recruitmentDate = new Date(dateRecrutement);
+    const currentDate = new Date();
+    const diffTime = currentDate - recruitmentDate;
+    const diffYears = diffTime / (1000 * 60 * 60 * 24 * 365.25);
+    return Math.floor(diffYears);
+  };
+
+  const formatDateSafely = (date) => {
+    if (!date || isNaN(new Date(date).getTime())) return '';
+    return new Date(date).toLocaleDateString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  };
+
+  const gererChangementInput = (e) => {
+    const { name, value } = e.target;
+    if (name === 'dateRecrutement') {
+      const anciennete = calculateAnciennete(value);
+      setDonneesFormulaire({ ...donneesFormulaire, [name]: value, anciennete: anciennete.toString() });
+    } else {
+      setDonneesFormulaire({ ...donneesFormulaire, [name]: value });
+    }
+  };
 
   const gererChangementFiltre = (e) => {
     setFiltres({ ...filtres, [e.target.name]: e.target.value });
     setPageActuelle(1);
   };
 
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (!file.type.match('image/jpeg')) {
+        setErreur('Seuls les fichiers JPEG (.jpg ou .jpeg) sont autorisés.');
+        return;
+      }
+      const maxSize = 10 * 1024 * 1024;
+      if (file.size > maxSize) {
+        setErreur('La taille de l\'image doit être inférieure à 10 Mo.');
+        return;
+      }
+      setImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+        setDonneesFormulaire({ ...donneesFormulaire, image: reader.result });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const ouvrirModal = (employe = null) => {
     setEmployeActuel(employe);
+    setImageFile(null);
+    setImagePreview(null);
     setDonneesFormulaire(employe ? {
       nomComplet: employe.nomComplet || '',
       dateNaissance: employe.dateNaissance ? new Date(employe.dateNaissance).toISOString().split('T')[0] : '',
@@ -101,13 +176,30 @@ const PageEmployes = ({ theme = 'light', addNotification }) => {
       experienceInterne: employe.experienceInterne || '',
       divisionId: employe.divisionId?._id || '',
       informationsSupplementaires: employe.informationsSupplementaires?.join(', ') || '',
+      image: employe.image || '',
+      anciennete: calculateAnciennete(employe.dateRecrutement).toString(),
     } : {
-      nomComplet: '', dateNaissance: '', sexe: '', grade: '', dateRecrutement: '', diplome: '', affectation: '',
-      situationFamiliale: '', missionPoste: '', formationInitiale: '', activitePrincipale: '', cin: '', ppr: '',
-      adresse: '', email: '', numeroTelephone: '', experienceExterne: '', experienceInterne: '', divisionId: '',
-      informationsSupplementaires: '',
+      nomComplet: '', dateNaissance: '', sexe: '', grade: '', dateRecrutement: '',
+      diplome: '', affectation: '', situationFamiliale: '', missionPoste: '',
+      formationInitiale: '', activitePrincipale: '', cin: '', ppr: '', adresse: '',
+      email: '', numeroTelephone: '', experienceExterne: '', experienceInterne: '',
+      divisionId: '', informationsSupplementaires: '', image: '', anciennete: '',
     });
     setAfficherModal(true);
+  };
+
+  const fermerModal = () => {
+    setAfficherModal(false);
+    setEmployeActuel(null);
+    setImageFile(null);
+    setImagePreview(null);
+    setDonneesFormulaire({
+      nomComplet: '', dateNaissance: '', sexe: '', grade: '', dateRecrutement: '',
+      diplome: '', affectation: '', situationFamiliale: '', missionPoste: '',
+      formationInitiale: '', activitePrincipale: '', cin: '', ppr: '', adresse: '',
+      email: '', numeroTelephone: '', experienceExterne: '', experienceInterne: '',
+      divisionId: '', informationsSupplementaires: '', image: '', anciennete: '',
+    });
   };
 
   const gererAfficherDetails = (employe) => {
@@ -116,7 +208,20 @@ const PageEmployes = ({ theme = 'light', addNotification }) => {
   };
 
   const navigateToDetails = (employeId) => {
-    navigate(`/employee-details/${employeId}`);
+    const employeeExists = employes.find(emp => emp._id === employeId);
+    if (employeeExists) {
+      navigate(`/pages/EmployeeDetails/${employeId}`, { state: { employee: employeeExists } });
+    } else {
+      setErreur('Employé non trouvé localement. Mise à jour de la liste...');
+      recupererEmployes().then(() => {
+        const updatedEmployee = employes.find(emp => emp._id === employeId);
+        if (updatedEmployee) {
+          navigate(`/pages/EmployeeDetails/${employeId}`, { state: { employee: updatedEmployee } });
+        } else {
+          setErreur('Employé non trouvé. Il a peut-être été supprimé ou l\'ID est invalide.');
+        }
+      });
+    }
   };
 
   const gererSoumission = async (e) => {
@@ -129,11 +234,11 @@ const PageEmployes = ({ theme = 'light', addNotification }) => {
       setErreur("L'email est requis");
       return;
     }
-    if (!donneesFormulaire.divisionId) {
+    if (!donneesFormulaire.divisionId || donneesFormulaire.divisionId === '') {
       setErreur('La division est requise');
       return;
     }
-    if (!donneesFormulaire.sexe) {
+    if (!donneesFormulaire.sexe || donneesFormulaire.sexe === '') {
       setErreur('Le genre est requis');
       return;
     }
@@ -149,19 +254,29 @@ const PageEmployes = ({ theme = 'light', addNotification }) => {
         dateNaissance: donneesFormulaire.dateNaissance ? new Date(donneesFormulaire.dateNaissance) : undefined,
         dateRecrutement: donneesFormulaire.dateRecrutement ? new Date(donneesFormulaire.dateRecrutement) : undefined,
         informationsSupplementaires: donneesFormulaire.informationsSupplementaires
-          ? donneesFormulaire.informationsSupplementaires.split(',').map((item) => item.trim())
+          ? donneesFormulaire.informationsSupplementaires.split(',').map((item) => item.trim()).filter(Boolean)
           : [],
+        image: donneesFormulaire.image || '',
+        anciennete: calculateAnciennete(donneesFormulaire.dateRecrutement).toString(),
       };
       if (employeActuel) {
         const changes = {};
         const fields = [
           'nomComplet', 'dateNaissance', 'sexe', 'grade', 'dateRecrutement', 'diplome', 'affectation',
           'situationFamiliale', 'missionPoste', 'formationInitiale', 'activitePrincipale', 'cin', 'ppr',
-          'adresse', 'email', 'numeroTelephone', 'experienceExterne', 'experienceInterne', 'divisionId'
+          'adresse', 'email', 'numeroTelephone', 'experienceExterne', 'experienceInterne', 'divisionId',
+          'image', 'anciennete'
         ];
         fields.forEach((field) => {
-          const oldValue = employeActuel[field] || (field === 'divisionId' ? employeActuel.divisionId?.name : '');
-          const newValue = payload[field] || (field === 'divisionId' ? divisions.find(d => d._id === payload.divisionId)?.name : '');
+          let oldValue = employeActuel[field];
+          let newValue = payload[field];
+          if (field === 'divisionId') {
+            oldValue = employeActuel.divisionId?._id || '';
+            newValue = payload.divisionId;
+          } else if (field === 'dateNaissance' || field === 'dateRecrutement') {
+            oldValue = oldValue ? new Date(oldValue).toISOString() : '';
+            newValue = newValue ? newValue.toISOString() : '';
+          }
           if (oldValue !== newValue) {
             changes[field] = { old: oldValue, new: newValue };
           }
@@ -184,7 +299,7 @@ const PageEmployes = ({ theme = 'light', addNotification }) => {
           { id: Date.now(), message: `Employé ${donneesFormulaire.nomComplet} ajouté avec succès` },
         ]);
       }
-      setAfficherModal(false);
+      fermerModal();
       setErreur('');
       recupererEmployes();
     } catch (err) {
@@ -202,6 +317,11 @@ const PageEmployes = ({ theme = 'light', addNotification }) => {
     try {
       const token = localStorage.getItem('token');
       const employe = employes.find((emp) => emp._id === idSuppression);
+      if (!employe) {
+        setErreur('Employé non trouvé pour la suppression.');
+        setAfficherCarteSuppression(false);
+        return;
+      }
       await axios.delete(`http://localhost:5000/api/employees/${idSuppression}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -212,62 +332,128 @@ const PageEmployes = ({ theme = 'light', addNotification }) => {
       ]);
       recupererEmployes();
       setAfficherCarteSuppression(false);
+      setIdSuppression(null);
     } catch (err) {
       setErreur('Échec de la suppression de l\'employé : ' + (err.response?.data?.message || err.message));
       setAfficherCarteSuppression(false);
     }
   };
 
-  const annulerSuppression = () => setAfficherCarteSuppression(false);
+  const annulerSuppression = () => {
+    setAfficherCarteSuppression(false);
+    setIdSuppression(null);
+  };
 
-  const exporterVersExcel = async () => {
+  const exporterVersExcelTous = async () => {
     try {
       const token = localStorage.getItem('token');
       const reponse = await axios.get('http://localhost:5000/api/employees', {
         headers: { Authorization: `Bearer ${token}` },
       });
       const tousEmployes = reponse.data;
+      if (!tousEmployes || tousEmployes.length === 0) {
+        setErreur('Aucun employé à exporter.');
+        return;
+      }
       const ws = XLSX.utils.json_to_sheet(
         tousEmployes.map((emp) => ({
           'Nom Complet': emp.nomComplet || '',
           CIN: emp.cin || '',
           PPR: emp.ppr || '',
-          'Date de Naissance': emp.dateNaissance || '',
+          'Date de Naissance': formatDateSafely(emp.dateNaissance),
           Genre: emp.sexe || '',
           Grade: emp.grade || '',
-          'Date de Recrutement': emp.dateRecrutement || '',
+          'Date de Recrutement': formatDateSafely(emp.dateRecrutement),
+          'Ancienneté (ans)': calculateAnciennete(emp.dateRecrutement),
           Diplôme: emp.diplome || '',
           Affectation: emp.affectation || '',
           'Situation Familiale': emp.situationFamiliale || '',
+          Division: emp.divisionId?.name || '',
+          Mission: emp.missionPoste || '',
+          'Formation Initiale': emp.formationInitiale || '',
+          'Activité Principale': emp.activitePrincipale || '',
+          Adresse: emp.adresse || '',
+          Email: emp.email || '',
+          'Numéro de Téléphone': emp.numeroTelephone || '',
+          'Expérience Externe': emp.experienceExterne || '',
+          'Expérience Interne': emp.experienceInterne || '',
+          'Informations Supplémentaires': emp.informationsSupplementaires?.join(', ') || '',
         }))
       );
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Employés');
       XLSX.writeFile(wb, 'tous_employes.xlsx');
+      setShowExportCard(false);
     } catch (err) {
-      setErreur('Échec de l\'exportation vers Excel : ' + (err.response?.data?.message || err.message));
+      setErreur('Échec de l\'exportation : ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  const exporterVersExcelFiltres = () => {
+    if (!employesFiltres || employesFiltres.length === 0) {
+      setErreur('Aucun employé filtré à exporter.');
+      return;
+    }
+    try {
+      const ws = XLSX.utils.json_to_sheet(
+        employesFiltres.map((emp) => ({
+          'Nom Complet': emp.nomComplet || '',
+          CIN: emp.cin || '',
+          PPR: emp.ppr || '',
+          'Date de Naissance': formatDateSafely(emp.dateNaissance),
+          Genre: emp.sexe || '',
+          Grade: emp.grade || '',
+          'Date de Recrutement': formatDateSafely(emp.dateRecrutement),
+          'Ancienneté (ans)': calculateAnciennete(emp.dateRecrutement),
+          Diplôme: emp.diplome || '',
+          Affectation: emp.affectation || '',
+          'Situation Familiale': emp.situationFamiliale || '',
+          Division: emp.divisionId?.name || '',
+          Mission: emp.missionPoste || '',
+          'Formation Initiale': emp.formationInitiale || '',
+          'Activité Principale': emp.activitePrincipale || '',
+          Adresse: emp.adresse || '',
+          Email: emp.email || '',
+          'Numéro de Téléphone': emp.numeroTelephone || '',
+          'Expérience Externe': emp.experienceExterne || '',
+          'Expérience Interne': emp.experienceInterne || '',
+          'Informations Supplémentaires': emp.informationsSupplementaires?.join(', ') || '',
+        }))
+      );
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Employés Filtrés');
+      XLSX.writeFile(wb, 'employes_filtres.xlsx');
+      setShowExportCard(false);
+    } catch (err) {
+      setErreur('Échec de l\'exportation : ' + (err.response?.data?.message || err.message));
     }
   };
 
   useEffect(() => {
-    if (banners.length > 0) {
-      const timer = setTimeout(() => {
-        setBanners((prev) => prev.slice(1));
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
+    if (banners.length === 0) return;
+    const timer = setTimeout(() => {
+      setBanners((prev) => prev.slice(1));
+    }, 5000);
+    return () => clearTimeout(timer);
   }, [banners]);
 
-  const employesFiltres = employes.filter((emp) =>
-    (emp.nomComplet || '').toLowerCase().includes(filtres.nomComplet.toLowerCase()) &&
-    (emp.ppr || '').toLowerCase().includes(filtres.ppr.toLowerCase()) &&
-    (emp.affectation || '').toLowerCase().includes(filtres.affectation.toLowerCase()) &&
-    (emp.divisionId?.name || '').toLowerCase().includes(filtres.divisionId.toLowerCase())
-  );
+  const employesFiltres = useMemo(() => {
+    return employes.filter((emp) => {
+      const divisionName = emp.divisionId?.name || '';
+      return (
+        (emp.nomComplet || '').toLowerCase().includes(filtres.nomComplet.toLowerCase()) &&
+        (emp.ppr || '').toLowerCase().includes(filtres.ppr.toLowerCase()) &&
+        (emp.affectation || '').toLowerCase().includes(filtres.affectation.toLowerCase()) &&
+        (filtres.divisionId ? divisionName.toLowerCase() === filtres.divisionId : true)
+      );
+    });
+  }, [employes, filtres]);
 
-  const employesTries = [...employesFiltres].sort((a, b) =>
-    triAscendant ? a.nomComplet.localeCompare(b.nomComplet) : b.nomComplet.localeCompare(a.nomComplet)
-  );
+  const employesTries = useMemo(() => {
+    return [...employesFiltres].sort((a, b) =>
+      triAscendant ? a.nomComplet.localeCompare(b.nomComplet) : b.nomComplet.localeCompare(a.nomComplet)
+    );
+  }, [employesFiltres, triAscendant]);
 
   const indexDernierEmploye = pageActuelle * employesParPage;
   const indexPremierEmploye = indexDernierEmploye - employesParPage;
@@ -279,700 +465,672 @@ const PageEmployes = ({ theme = 'light', addNotification }) => {
 
   const nomEmployeASupprimer = employes.find((emp) => emp._id === idSuppression)?.nomComplet || 'Inconnu';
 
+  const appContainerStyle = {
+    backgroundColor: theme === 'dark' ? '#14131f' : '#ffffff',
+    color: theme === 'dark' ? '#e0e0e0' : '#212529',
+    padding: '1.5rem',
+    minHeight: '100vh',
+    position: 'relative',
+  };
+
+  const cardCustomStyle = {
+    backgroundColor: theme === 'dark' ? '#2a2a3a' : '#ffffff',
+    border: `1px solid ${theme === 'dark' ? '#3a3a4a' : '#dee2e6'}`,
+    borderRadius: '10px',
+    padding: '1rem',
+    width: '100%',
+  };
+
+  const modalContentStyle = {
+    backgroundColor: theme === 'dark' ? '#2a2a3a' : '#ffffff',
+    border: `1px solid ${theme === 'dark' ? '#3a3a4a' : '#dee2e6'}`,
+    borderRadius: '10px',
+    padding: '1rem',
+    width: '100%',
+  };
+
+  const modalHeaderStyle = {
+    backgroundColor: theme === 'dark' ? '#3a3a4a' : '#f8f9fa',
+    borderColor: theme === 'dark' ? '#4a4a5a' : '#dee2e6',
+  };
+
+  const modalBodyStyle = {
+    maxHeight: '60vh',
+    overflowY: 'auto',
+    padding: '1rem',
+  };
+
+  const tableContainerStyle = {
+    overflowX: 'auto',
+    maxHeight: '70vh',
+    overflowY: 'auto',
+    marginBottom: '2rem',
+    width: tableContainerWidth - 48, // Subtract padding (24px on each side from parent)
+  };
+
+  const tableCustomStyle = {
+    backgroundColor: theme === 'dark' ? '#242434' : '#f8f9fa',
+    color: theme === 'dark' ? '#e0e0e0' : '#212529',
+    tableLayout: 'fixed',
+    width: '100%',
+    borderCollapse: 'collapse',
+  };
+
+  const tableHeadStyle = {
+    backgroundColor: theme === 'dark' ? '#4a4a5a' : '#f8f9fa',
+    color: theme === 'dark' ? '#e0e0e0' : '#212529',
+    position: 'sticky',
+    top: 0,
+    zIndex: 1,
+  };
+
+  const tableRowStyle = (rowId) => ({
+    backgroundColor: 'transparent',
+    cursor: 'pointer',
+    borderBottom: `1px solid ${theme === 'dark' ? '#3a3a4a' : '#dee2e6'}`,
+    ...(hoveredTableRow === rowId && {
+      backgroundColor: theme === 'dark' ? 'rgba(52, 73, 94, 0.8)' : 'rgba(52, 73, 94, 0.2)',
+    }),
+  });
+
+  const tableCellStyle = {
+    padding: '0.8rem 1rem',
+    color: theme === 'dark' ? '#e0e0e0' : '#212529',
+    fontSize: '1rem',
+    border: 'none',
+    whiteSpace: 'nowrap',
+  };
+
+  const tableColumnStyles = {
+    nomComplet: { width: '10%', minWidth: '60px' }, // Further reduced to prevent overlap
+    cin: { width: '6%', minWidth: '35px' },
+    ppr: { width: '6%', minWidth: '35px' },
+    dateNaissance: { width: '10%', minWidth: '80px' },
+    sexe: { width: '6%', minWidth: '30px' },
+    grade: { width: '8%', minWidth: '40px' },
+    dateRecrutement: { width: '10%', minWidth: '100px' },
+    anciennete: { width: '8%', minWidth: '60px' },
+    diplome: { width: '10%', minWidth: '120px' },
+    affectation: { width: '10%', minWidth: '100px' },
+    situationFamiliale: { width: '10%', minWidth: '80px' },
+    actions: { width: '10%', minWidth: '70px' },
+  };
+
+  const btnStyle = (buttonId, type) => {
+    const baseStyle = {
+      color: theme === 'dark' ? '#e0e0e0' : '#212529',
+      borderColor: theme === 'dark' ? '#4a4a5a' : '#ced4da',
+      backgroundColor: 'transparent',
+      padding: '0.3rem 0.6rem',
+      borderRadius: '4px',
+      transition: 'background-color 0.3s ease, color 0.3s ease',
+    };
+
+    if (type === 'add') {
+      baseStyle.backgroundColor = theme === 'dark' ? 'transparent' : '#28a745';
+      baseStyle.color = theme === 'dark' ? '#28a745' : '#ffffff';
+      baseStyle.borderColor = theme === 'dark' ? '#28a745' : '#28a745';
+      if (hoveredButton === buttonId) {
+        baseStyle.backgroundColor = theme === 'dark' ? '#28a745' : '#218838';
+        baseStyle.color = '#ffffff';
+      }
+    } else if (type === 'exporter') {
+      baseStyle.backgroundColor = theme === 'dark' ? 'transparent' : '#007bff';
+      baseStyle.color = theme === 'dark' ? '#007bff' : '#ffffff';
+      baseStyle.borderColor = theme === 'dark' ? '#007bff' : '#007bff';
+      if (hoveredButton === buttonId) {
+        baseStyle.backgroundColor = theme === 'dark' ? '#007bff' : '#0069d9';
+        baseStyle.color = '#ffffff';
+      }
+    } else {
+      if (hoveredButton === buttonId) {
+        baseStyle.backgroundColor = theme === 'dark' ? '#3a3a4a' : '#e9ecef';
+      }
+    }
+
+    return baseStyle;
+  };
+
+  const btnOutlineSecondaryStyle = (buttonId) => ({
+    color: theme === 'dark' ? '#e0e0e0' : '#212529',
+    borderColor: theme === 'dark' ? '#4a4a5a' : '#ced4da',
+    backgroundColor: 'transparent',
+    padding: '0.3rem 0.6rem',
+    ...(hoveredButton === buttonId && {
+      backgroundColor: theme === 'dark' ? '#3a3a4a' : '#e9ecef',
+    }),
+  });
+
+  const textMutedStyle = {
+    color: theme === 'dark' ? '#a0a0a0' : '#6c757d',
+  };
+
+  const formControlStyle = {
+    backgroundColor: theme === 'dark' ? '#3a3a4a' : '#ffffff',
+    color: theme === 'dark' ? '#e0e0e0' : '#212529',
+    borderColor: theme === 'dark' ? '#4a4a5a' : '#ced4da',
+    padding: '0.3rem 0.5rem',
+    fontSize: '0.9rem',
+  };
+
+  const dropdownMenuStyle = {
+    backgroundColor: theme === 'dark' ? '#2a2a3a' : '#ffffff',
+    color: theme === 'dark' ? '#ee0e0e0' : '#212529',
+    borderColor: theme === 'dark' ? '#4a4a5a' : '#dee2e6',
+  };
+
+  const dropdownItemStyle = (itemId) => ({
+    color: theme === 'dark' ? '#e0e0e0' : '#212529',
+    ...(hoveredDropdownItem === itemId && {
+      backgroundColor: theme === 'dark' ? '#3a3a4a' : '#f8f9fa',
+      color: theme === 'dark' ? '#ffffff' : '#495057',
+    }),
+  });
+
+  const alertDangerStyle = {
+    backgroundColor: theme === 'dark' ? '#7f1d1d' : '#f8d7da',
+    color: theme === 'dark' ? '#f9a8a8' : '#721c24',
+    borderColor: theme === 'dark' ? '#991b1b' : '#f5c6cb',
+  };
+
+  const backdropCustomStyle = {
+    backgroundColor: theme === 'dark' ? 'rgba(20, 19, 31, 0.8)' : 'rgba(0, 0, 0, 0.5)',
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    zIndex: 998,
+  };
+
+  const deleteCardStyle = {
+    backgroundColor: theme === 'dark' ? '#2a2a3a' : '#ffffff',
+    color: theme === 'dark' ? '#e0e0e0' : '#212529',
+    border: `1px solid ${theme === 'dark' ? '#4a4a5a' : '#dee2e6'}`,
+    borderRadius: '10px',
+    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+  };
+
+  const btnOutlineLightStyle = {
+    color: theme === 'dark' ? '#e0e0e0' : '#212529',
+    borderColor: theme === 'dark' ? '#4a4a5a' : '#ced4da',
+    padding: '0.3rem 0.6rem',
+    ...(hoveredCancelButton && {
+      backgroundColor: theme === 'dark' ? '#3a3a4a' : '#e9ecef',
+    }),
+  };
+
+  const formGroupCompactStyle = {
+    marginBottom: '0.5rem',
+  };
+
+  const formLabelCompactStyle = {
+    marginBottom: '0.2rem',
+    fontSize: '0.9rem',
+  };
+
+  const formControlCompactStyle = {
+    padding: '0.3rem 0.5rem',
+    height: '1.8rem',
+    fontSize: '0.9rem',
+  };
+
+  const bannerStyle = {
+    position: 'fixed',
+    top: '80px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    width: '400px',
+    backgroundColor: theme === 'dark' ? '#2a2a3a' : '#ffffff',
+    border: `1px solid ${theme === 'dark' ? '#4a4a5a' : '#dee2e6'}`,
+    borderRadius: '8px',
+    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+    padding: '10px 15px',
+    zIndex: 1003,
+    color: theme === 'dark' ? '#e0e0e0' : '#212529',
+    textAlign: 'center',
+    animation: 'fadeInOut 5s ease-in-out forwards',
+  };
+
+  const exportCardStyle = {
+    position: 'absolute',
+    top: '40px',
+    right: '110px',
+    width: '250px',
+    backgroundColor: theme === 'dark' ? '#2a2a3a' : '#ffffff',
+    border: `1px solid ${theme === 'dark' ? '#4a4a5a' : '#dee2e6'}`,
+    borderRadius: '8px',
+    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+    padding: '0.5rem',
+    zIndex: 1002,
+    color: theme === 'dark' ? '#e0e0e0' : '#212529',
+  };
+
+  const paginationBtnStyle = (buttonId, disabled) => ({
+    backgroundColor: 'transparent',
+    borderColor: theme === 'dark' ? '#4a4a5a' : '#ced4da',
+    color: theme === 'dark' ? '#e0e0e0' : '#212529',
+    opacity: disabled ? 0.65 : 1,
+    ...(hoveredPaginationButton === buttonId && !disabled && {
+      backgroundColor: theme === 'dark' ? '#3a3a4a' : '#e9ecef',
+    }),
+  });
+
   return (
-    <>
-      <style>
-        {`
-          .app-container {
-            background-color: ${theme === 'dark' ? '#14131f' : '#ffffff'};
-            color: ${theme === 'dark' ? '#e0e0e0' : '#212529'};
-            padding: 2rem;
-            min-height: 100vh;
-            position: relative;
-          }
-
-          .card-custom, .modal-content {
-            background-color: ${theme === 'dark' ? '#2a2a3a' : '#ffffff'};
-            border: 1px solid ${theme === 'dark' ? '#3a3a4a' : '#dee2e6'};
-            border-radius: 10px;
-            box-shadow: none;
-            padding: 1.5rem;
-            width: 100%;
-          }
-
-          .modal-header {
-            background-color: ${theme === 'dark' ? '#3a3a4a' : '#f8f9fa'};
-            border-color: ${theme === 'dark' ? '#4a4a5a' : '#dee2e6'};
-            position: sticky;
-            top: 0;
-            z-index: 1;
-          }
-
-          .modal-body {
-            max-height: 60vh;
-            overflow-y: auto;
-            padding: 1.5rem;
-          }
-
-          .table-custom {
-            background-color: #34495e !important;
-            color: ${theme === 'dark' ? '#e0e0e0' : '#212529'};
-          }
-
-          .table-custom thead {
-            background-color: #34495e !important;
-            color: ${theme === 'dark' ? '#e0e0e0' : '#212529'};
-          }
-
-          .table-custom tbody tr:hover {
-            background-color: ${theme === 'dark' ? 'rgba(52, 73, 94, 0.8)' : 'rgba(52, 73, 94, 0.2)'};
-          }
-
-          .table-custom tbody tr {
-            background-color: transparent;
-            cursor: pointer;
-          }
-
-          .table-container {
-            overflow-x: auto;
-            width: 100%;
-          }
-
-          .table-custom th, .table-custom td {
-            white-space: nowrap;
-            padding: 0.75rem;
-            color: ${theme === 'dark' ? '#e0e0e0' : '#212529'};
-          }
-
-          .btn-primary {
-            background-color: #1e40af;
-            border: none;
-            color: #ffffff;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            font-weight: 500;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            transition: background-color 0.3s ease, box-shadow 0.3s ease;
-          }
-
-          .btn-primary:hover {
-            background-color: #163373;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-            color: #ffffff;
-          }
-
-          .btn-exporter {
-            background-color: #28a745;
-            border: none;
-            color: #ffffff;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            font-weight: 500;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            transition: background-color 0.3s ease, box-shadow 0.3s ease;
-          }
-
-          .btn-exporter:hover {
-            background-color: #218838;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-            color: #ffffff;
-          }
-
-          .btn-outline-secondary {
-            color: ${theme === 'dark' ? '#a0a0a0' : '#6c757d'};
-            border-color: ${theme === 'dark' ? '#4a4a5a' : '#ced4da'};
-          }
-
-          .btn-outline-secondary:hover {
-            background-color: ${theme === 'dark' ? '#3a3a4a' : '#e9ecef'};
-            color: ${theme === 'dark' ? '#e0e0e0' : '#495057'};
-          }
-
-          .text-muted {
-            color: ${theme === 'dark' ? '#a0a0a0' : '#6c757d'} !important;
-          }
-
-          .form-control, .form-select {
-            background-color: ${theme === 'dark' ? '#3a3a4a' : '#ffffff'};
-            color: ${theme === 'dark' ? '#e0e0e0' : '#212529'};
-            border-color: ${theme === 'dark' ? '#4a4a5a' : '#ced4da'};
-          }
-
-          .dropdown-menu {
-            background-color: ${theme === 'dark' ? '#2a2a3a' : '#ffffff'};
-            color: ${theme === 'dark' ? '#e0e0e0' : '#212529'};
-            border-color: ${theme === 'dark' ? '#4a4a5a' : '#dee2e6'};
-          }
-
-          .dropdown-item {
-            color: ${theme === 'dark' ? '#e0e0e0' : '#212529'};
-          }
-
-          .dropdown-item:hover {
-            background-color: ${theme === 'dark' ? '#3a3a4a' : '#f8f9fa'};
-            color: ${theme === 'dark' ? '#ffffff' : '#495057'};
-          }
-
-          .alert-danger {
-            background-color: ${theme === 'dark' ? '#7f1d1d' : '#f8d7da'};
-            color: ${theme === 'dark' ? '#f9a8a8' : '#721c24'};
-            border-color: ${theme === 'dark' ? '#991b1b' : '#f5c6cb'};
-          }
-
-          .backdrop-custom {
-            background-color: ${theme === 'dark' ? 'rgba(20, 19, 31, 0.8)' : 'rgba(0, 0, 0, 0.5)'};
-          }
-
-          .delete-card {
-            background-color: ${theme === 'dark' ? '#2a2a3a' : '#ffffff'};
-            color: ${theme === 'dark' ? '#e0e0e0' : '#212529'};
-            border: 1px solid ${theme === 'dark' ? '#4a4a5a' : '#dee2e6'};
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-          }
-
-          .delete-card .btn-danger {
-            background-color: ${theme === 'dark' ? '#dc3545' : '#dc3545'};
-            border-color: ${theme === 'dark' ? '#dc3545' : '#dc3545'};
-            color: ${theme === 'dark' ? '#ffffff' : '#ffffff'};
-          }
-
-          .delete-card .btn-outline-light {
-            color: ${theme === 'dark' ? '#e0e0e0' : '#212529'};
-            border-color: ${theme === 'dark' ? '#4a4a5a' : '#ced4da'};
-          }
-
-          .form-group-compact {
-            margin-bottom: 0.5rem !important;
-          }
-
-          .form-label-compact {
-            margin-bottom: 0.2rem !important;
-            font-size: 0.9rem;
-          }
-
-          .form-control-compact {
-            padding: 0.3rem 0.5rem;
-            height: 1.8rem;
-            font-size: 0.9rem;
-          }
-
-          .banner {
-            position: fixed;
-            top: 80px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 400px;
-            background-color: ${theme === 'dark' ? '#2a2a3a' : '#ffffff'};
-            border: 1px solid ${theme === 'dark' ? '#4a4a5a' : '#dee2e6'};
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            padding: 10px 15px;
-            z-index: 1003;
-            color: ${theme === 'dark' ? '#e0e0e0' : '#212529'};
-            text-align: center;
-            animation: fadeInOut 5s ease-in-out forwards;
-          }
-
-          @keyframes fadeInOut {
-            0% { opacity: 0; }
-            10% { opacity: 1; }
-            90% { opacity: 1; }
-            100% { opacity: 0; }
-          }
-
-          .table-custom .btn-link {
-            color: ${theme === 'dark' ? '#ffffff' : '#1e40af'};
-          }
-
-          .table-custom .btn-link.text-danger {
-            color: ${theme === 'dark' ? '#dc3545' : '#dc3545'} !important;
-          }
-
-          .btn.pagination-btn {
-            background-color: ${theme === 'dark' ? '#ffffff' : '#1e40af'};
-            border-color: ${theme === 'dark' ? '#ffffff' : '#1e40af'};
-            color: ${theme === 'dark' ? '#14131f' : '#ffffff'};
-          }
-
-          .btn.pagination-btn:hover {
-            background-color: ${theme === 'dark' ? '#e0e0e0' : '#163373'};
-            border-color: ${theme === 'dark' ? '#e0e0e0' : '#163373'};
-            color: ${theme === 'dark' ? '#14131f' : '#ffffff'};
-          }
-
-          .btn.pagination-btn:disabled {
-            background-color: ${theme === 'dark' ? '#a0a0a0' : '#6c757d'};
-            border-color: ${theme === 'dark' ? '#a0a0a0' : '#6c757d'};
-            color: ${theme === 'dark' ? '#14131f' : '#ffffff'};
-            opacity: 0.65;
-          }
-        `}
-      </style>
-      <div className="app-container">
-        <div className="card-custom">
-          {erreur && <Alert variant="danger" className="mb-4">{erreur}</Alert>}
-          <div className="d-flex justify-content-between align-items-center mb-4">
-            <h3 className="mb-0">Gestion des Employés</h3>
-            <div className="d-flex gap-2">
-              <Button variant="exporter" onClick={exporterVersExcel}>
-                <BsDownload className="me-2" /> Exporter
-              </Button>
-              <Button variant="primary" onClick={() => ouvrirModal()}>
-                <BsPlus size={20} className="me-2" /> Ajouter
-              </Button>
-            </div>
-          </div>
-
-          <div className="d-flex flex-wrap gap-3 mb-4 align-items-center">
-            <Form.Control
-              type="text"
-              name="nomComplet"
-              placeholder="Rechercher par nom..."
-              value={filtres.nomComplet}
-              onChange={gererChangementFiltre}
-              className="flex-grow-1"
-            />
-            <ButtonGroup>
-              <Button variant={triAscendant ? 'primary' : 'outline-secondary'} onClick={() => basculerTri(true)}>
-                <BsSortAlphaDown />
-              </Button>
-              <Button variant={!triAscendant ? 'primary' : 'outline-secondary'} onClick={() => basculerTri(false)}>
-                <BsSortAlphaUp />
-              </Button>
-            </ButtonGroup>
-            <Dropdown>
-              <Dropdown.Toggle variant="outline-secondary">
-                <BsFilter className="me-2" /> Divisions
-              </Dropdown.Toggle>
-              <Dropdown.Menu>
-                {divisions.map((division) => (
-                  <Dropdown.Item
-                    key={division._id}
-                    active={filtres.divisionId === division.name.toLowerCase()}
-                    onClick={() => setFiltres({ ...filtres, divisionId: division.name.toLowerCase() })}
-                  >
-                    {division.name}
-                  </Dropdown.Item>
-                ))}
-                <Dropdown.Item onClick={() => setFiltres({ ...filtres, divisionId: '' })}>
-                  Effacer les filtres
-                </Dropdown.Item>
-              </Dropdown.Menu>
-            </Dropdown>
-          </div>
-
-          {filtres.divisionId && (
-            <div className="mb-4">
-              <small className="text-muted">
-                Filtre actif: {divisions.find((d) => d.name.toLowerCase() === filtres.divisionId)?.name}
+    <div style={appContainerStyle}>
+      <div style={cardCustomStyle}>
+        {erreur && <Alert variant="danger" style={{ ...alertDangerStyle, marginBottom: '1rem' }}>{erreur}</Alert>}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h3 style={{ marginBottom: 0 }}>Gestion des Employés</h3>
+          <div style={{ display: 'flex', gap: '0.5rem', position: 'relative' }}>
+            <Button
+              onClick={() => setShowExportCard(!showExportCard)}
+              onMouseEnter={() => setHoveredButton('exporter')}
+              onMouseLeave={() => setHoveredButton(null)}
+              style={btnStyle('exporter', 'exporter')}
+            >
+              <BsDownload style={{ marginRight: '0.5rem' }} /> Exporter
+            </Button>
+            {showExportCard && (
+              <div style={exportCardStyle}>
                 <Button
-                  variant="link"
-                  size="sm"
-                  className="text-danger p-0 ms-2"
-                  onClick={() => setFiltres({ ...filtres, divisionId: '' })}
+                  variant="outline-secondary"
+                  onClick={exporterVersExcelTous}
+                  onMouseEnter={() => setHoveredButton('export-all')}
+                  onMouseLeave={() => setHoveredButton(null)}
+                  style={{ ...btnStyle('export-all'), width: '100%', marginBottom: '0.5rem', fontSize: '0.9rem' }}
                 >
-                  Effacer
+                  Télécharger liste pour tous les employés
                 </Button>
-              </small>
-            </div>
-          )}
+                <Button
+                  variant="outline-secondary"
+                  onClick={exporterVersExcelFiltres}
+                  onMouseEnter={() => setHoveredButton('export-filtered')}
+                  onMouseLeave={() => setHoveredButton(null)}
+                  style={{ ...btnStyle('export-filtered'), width: '100%', fontSize: '0.9rem' }}
+                >
+                  Télécharger liste pour les employés filtrés
+                </Button>
+              </div>
+            )}
+            <Button
+              onClick={() => ouvrirModal()}
+              onMouseEnter={() => setHoveredButton('add')}
+              onMouseLeave={() => setHoveredButton(null)}
+              style={btnStyle('add', 'add')}
+            >
+              <BsPlus size={16} style={{ marginRight: '0.5rem' }} /> Ajouter
+            </Button>
+          </div>
+        </div>
 
-          <div className="table-container">
-            <Table className="table-custom">
-              <thead>
-                <tr>
-                  <th>Nom Complet</th>
-                  <th>CIN</th>
-                  <th>PPR</th>
-                  <th>Date de Naissance</th>
-                  <th>Genre</th>
-                  <th>Grade</th>
-                  <th>Date de Recrutement</th>
-                  <th>Diplôme</th>
-                  <th>Affectation</th>
-                  <th>Situation Familiale</th>
-                  <th className="text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employesActuels.length > 0 ? (
-                  employesActuels.map((employe) => (
-                    <tr key={employe._id} onClick={() => navigateToDetails(employe._id)}>
-                      <td>{employe.nomComplet || ''}</td>
-                      <td>{employe.cin || ''}</td>
-                      <td>{employe.ppr || ''}</td>
-                      <td>{employe.dateNaissance ? new Date(employe.dateNaissance).toLocaleDateString('fr-FR') : ''}</td>
-                      <td>{employe.sexe || ''}</td>
-                      <td>{employe.grade || ''}</td>
-                      <td>{employe.dateRecrutement ? new Date(employe.dateRecrutement).toLocaleDateString('fr-FR') : ''}</td>
-                      <td>{employe.diplome || ''}</td>
-                      <td>{employe.affectation || ''}</td>
-                      <td>{employe.situationFamiliale || ''}</td>
-                      <td className="text-center">
-                        <Button variant="link" onClick={(e) => { e.stopPropagation(); gererAfficherDetails(employe); }} className="text-muted">
-                          <BsEye />
-                        </Button>
-                        <Button variant="link" onClick={(e) => { e.stopPropagation(); ouvrirModal(employe); }} className="text-muted">
-                          <BsPencil />
-                        </Button>
-                        <Button variant="link" onClick={(e) => gererSuppression(e, employe._id)} className="text-danger">
-                          <BsTrash />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="11" className="text-center text-muted py-4">
-                      Aucun employé trouvé
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
+          <Form.Control
+            type="text"
+            name="nomComplet"
+            placeholder="Rechercher par nom..."
+            value={filtres.nomComplet}
+            onChange={gererChangementFiltre}
+            style={{ ...formControlStyle, flexGrow: '1', minWidth: '150px' }}
+          />
+          <ButtonGroup>
+            <Button
+              variant={triAscendant ? 'outline-primary' : 'outline-secondary'}
+              onClick={() => basculerTri(true)}
+              onMouseEnter={() => setHoveredButton('sortAsc')}
+              onMouseLeave={() => setHoveredButton(null)}
+              style={btnOutlineSecondaryStyle('sortAsc')}
+            >
+              <BsSortAlphaDown />
+            </Button>
+            <Button
+              variant={!triAscendant ? 'outline-primary' : 'outline-secondary'}
+              onClick={() => basculerTri(false)}
+              onMouseEnter={() => setHoveredButton('sortDesc')}
+              onMouseLeave={() => setHoveredButton(null)}
+              style={btnOutlineSecondaryStyle('sortDesc')}
+            >
+              <BsSortAlphaUp />
+            </Button>
+          </ButtonGroup>
+          <Dropdown>
+            <Dropdown.Toggle
+              variant="outline-secondary"
+              onMouseEnter={() => setHoveredButton('dropdown')}
+              onMouseLeave={() => setHoveredButton(null)}
+              style={btnOutlineSecondaryStyle('dropdown')}
+            >
+              <BsFilter style={{ marginRight: '0.5rem' }} /> Divisions
+            </Dropdown.Toggle>
+            <Dropdown.Menu style={dropdownMenuStyle}>
+              {divisions.map((division) => (
+                <Dropdown.Item
+                  key={division._id}
+                  active={filtres.divisionId === division.name.toLowerCase()}
+                  onClick={() => setFiltres({ ...filtres, divisionId: division.name.toLowerCase() })}
+                  onMouseEnter={() => setHoveredDropdownItem(division._id)}
+                  onMouseLeave={() => setHoveredDropdownItem(null)}
+                  style={dropdownItemStyle(division._id)}
+                >
+                  {division.name}
+                </Dropdown.Item>
+              ))}
+              <Dropdown.Item
+                onClick={() => setFiltres({ ...filtres, divisionId: '' })}
+                onMouseEnter={() => setHoveredDropdownItem('clear')}
+                onMouseLeave={() => setHoveredDropdownItem(null)}
+                style={dropdownItemStyle('clear')}
+              >
+                Effacer les filtres
+              </Dropdown.Item>
+            </Dropdown.Menu>
+          </Dropdown>
+        </div>
+
+        {filtres.divisionId && (
+          <div style={{ marginBottom: '1rem' }}>
+            <small style={textMutedStyle}>
+              Filtre actif: {divisions.find((d) => d.name.toLowerCase() === filtres.divisionId)?.name || 'Inconnu'}
+              <Button
+                variant="link"
+                size="sm"
+                onClick={() => setFiltres({ ...filtres, divisionId: '' })}
+                style={{ ...btnLinkStyle, padding: '0', marginLeft: '0.5rem' }}
+              >
+                Effacer
+              </Button>
+            </small>
+          </div>
+        )}
+
+        <div style={tableContainerStyle}>
+          <Table style={tableCustomStyle}>
+            <thead style={tableHeadStyle}>
+              <tr>
+                <th style={{ ...tableCellStyle, ...tableColumnStyles.nomComplet, textAlign: 'left' }}>Nom Complet</th>
+                <th style={{ ...tableCellStyle, ...tableColumnStyles.cin, textAlign: 'left' }}>CIN</th>
+                <th style={{ ...tableCellStyle, ...tableColumnStyles.ppr, textAlign: 'left' }}>PPR</th>
+                <th style={{ ...tableCellStyle, ...tableColumnStyles.dateNaissance, textAlign: 'left' }}>Date de Naissance</th>
+                <th style={{ ...tableCellStyle, ...tableColumnStyles.sexe, textAlign: 'left' }}>Genre</th>
+                <th style={{ ...tableCellStyle, ...tableColumnStyles.grade, textAlign: 'left' }}>Grade</th>
+                <th style={{ ...tableCellStyle, ...tableColumnStyles.dateRecrutement, textAlign: 'left' }}>Date de Recrutement</th>
+                <th style={{ ...tableCellStyle, ...tableColumnStyles.anciennete, textAlign: 'left' }}>Ancienneté (ans)</th>
+                <th style={{ ...tableCellStyle, ...tableColumnStyles.diplome, textAlign: 'left' }}>Diplôme</th>
+                <th style={{ ...tableCellStyle, ...tableColumnStyles.affectation, textAlign: 'left' }}>Affectation</th>
+                <th style={{ ...tableCellStyle, ...tableColumnStyles.situationFamiliale, textAlign: 'left' }}>Situation Familiale</th>
+                <th style={{ ...tableCellStyle, ...tableColumnStyles.actions, textAlign: 'center' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {employesActuels.length > 0 ? (
+                employesActuels.map((employe) => (
+                  <tr
+                    key={employe._id}
+                    onClick={() => navigateToDetails(employe._id)}
+                    onMouseEnter={() => setHoveredTableRow(employe._id)}
+                    onMouseLeave={() => setHoveredTableRow(null)}
+                    style={tableRowStyle(employe._id)}
+                  >
+                    <td style={{ ...tableCellStyle, ...tableColumnStyles.nomComplet }}>{employe.nomComplet || ''}</td>
+                    <td style={{ ...tableCellStyle, ...tableColumnStyles.cin }}>{employe.cin || ''}</td>
+                    <td style={{ ...tableCellStyle, ...tableColumnStyles.ppr }}>{employe.ppr || ''}</td>
+                    <td style={{ ...tableCellStyle, ...tableColumnStyles.dateNaissance }}>{formatDateSafely(employe.dateNaissance)}</td>
+                    <td style={{ ...tableCellStyle, ...tableColumnStyles.sexe }}>{employe.sexe || ''}</td>
+                    <td style={{ ...tableCellStyle, ...tableColumnStyles.grade }}>{employe.grade || ''}</td>
+                    <td style={{ ...tableCellStyle, ...tableColumnStyles.dateRecrutement }}>{formatDateSafely(employe.dateRecrutement)}</td>
+                    <td style={{ ...tableCellStyle, ...tableColumnStyles.anciennete }}>{`${calculateAnciennete(employe.dateRecrutement)} ans` || 'N/A'}</td>
+                    <td style={{ ...tableCellStyle, ...tableColumnStyles.diplome }}>{employe.diplome || ''}</td>
+                    <td style={{ ...tableCellStyle, ...tableColumnStyles.affectation }}>{employe.affectation || ''}</td>
+                    <td style={{ ...tableCellStyle, ...tableColumnStyles.situationFamiliale }}>{employe.situationFamiliale || ''}</td>
+                    <td style={{ ...tableCellStyle, ...tableColumnStyles.actions, textAlign: 'center' }}>
+                      <Button
+                        variant="outline-secondary"
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); gererAfficherDetails(employe); }}
+                        style={{ padding: '0.2rem 0.4rem', marginRight: '0.2rem' }}
+                        title="Voir Détails"
+                      >
+                        <BsEye />
+                      </Button>
+                      <Button
+                        variant="outline-secondary"
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); ouvrirModal(employe); }}
+                        style={{ padding: '0.2rem 0.4rem', marginRight: '0.2rem' }}
+                        title="Modifier"
+                      >
+                        <BsPencil />
+                      </Button>
+                      <Button
+                        variant="outline-secondary"
+                        size="sm"
+                        onClick={(e) => gererSuppression(e, employe._id)}
+                        style={{ padding: '0.2rem 0.4rem' }}
+                        title="Supprimer"
+                      >
+                        <BsTrash />
+                      </Button>
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </Table>
-          </div>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="12" style={{ ...tableCellStyle, textAlign: 'center', padding: '1rem', color: theme === 'dark' ? '#a0a0a0' : '#6c757d' }}>
+                    Aucun employé trouvé
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </Table>
+        </div>
 
-          <div className="d-flex justify-content-center mt-4">
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem' }}>
+          <Button
+            variant="outline-secondary"
+            onClick={() => paginer(pageActuelle - 1)}
+            disabled={pageActuelle === 1}
+            onMouseEnter={() => setHoveredPaginationButton('prev')}
+            onMouseLeave={() => setHoveredPaginationButton(null)}
+            style={{ ...paginationBtnStyle('prev', pageActuelle === 1), marginRight: '0.5rem' }}
+          >
+            Précédent
+          </Button>
+          {Array.from({ length: totalPages }, (_, i) => (
             <Button
-              onClick={() => paginer(pageActuelle - 1)}
-              disabled={pageActuelle === 1}
-              variant="pagination-btn"
-              className="me-2"
+              key={i + 1}
+              variant="outline-secondary"
+              onClick={() => paginer(i + 1)}
+              onMouseEnter={() => setHoveredPaginationButton(i + 1)}
+              onMouseLeave={() => setHoveredPaginationButton(null)}
+              style={{
+                ...paginationBtnStyle(i + 1, false),
+                marginRight: '0.5rem',
+                fontWeight: pageActuelle === i + 1 ? 'bold' : 'normal',
+              }}
             >
-              Précédent
+              {i + 1}
             </Button>
-            {Array.from({ length: totalPages }, (_, i) => (
-              <Button
-                key={i + 1}
-                onClick={() => paginer(i + 1)}
-                variant="pagination-btn"
-                className="me-2"
-                active={pageActuelle === i + 1}
-              >
-                {i + 1}
-              </Button>
-            ))}
-            <Button
-              onClick={() => paginer(pageActuelle + 1)}
-              disabled={pageActuelle === totalPages}
-              variant="pagination-btn"
-            >
-              Suivant
-            </Button>
-          </div>
-
-          {banners.map((banner) => (
-            <div key={banner.id} className="banner">
-              {banner.message}
-            </div>
           ))}
+          <Button
+            variant="outline-secondary"
+            onClick={() => paginer(pageActuelle + 1)}
+            disabled={pageActuelle === totalPages}
+            onMouseEnter={() => setHoveredPaginationButton('next')}
+            onMouseLeave={() => setHoveredPaginationButton(null)}
+            style={paginationBtnStyle('next', pageActuelle === totalPages)}
+          >
+            Suivant
+          </Button>
+        </div>
 
-          <Modal show={afficherModal} onHide={() => setAfficherModal(false)} centered>
-            <Modal.Header closeButton>
+        {banners.map((banner) => (
+          <div key={banner.id} style={bannerStyle}>
+            {banner.message}
+          </div>
+        ))}
+
+        <Modal show={afficherModal} onHide={fermerModal} centered>
+          <div style={modalContentStyle}>
+            <Modal.Header closeButton style={modalHeaderStyle}>
               <Modal.Title>{employeActuel ? 'Modifier Employé' : 'Ajouter Employé'}</Modal.Title>
             </Modal.Header>
-            <Modal.Body>
-              <Form onSubmit={gererSoumission} className="d-flex flex-wrap justify-content-center gap-3">
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Nom Complet</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="nomComplet"
-                    value={donneesFormulaire.nomComplet}
-                    onChange={gererChangementInput}
-                    required
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Date de Naissance</Form.Label>
-                  <Form.Control
-                    type="date"
-                    name="dateNaissance"
-                    value={donneesFormulaire.dateNaissance}
-                    onChange={gererChangementInput}
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Genre</Form.Label>
-                  <Form.Select
-                    name="sexe"
-                    value={donneesFormulaire.sexe}
-                    onChange={gererChangementInput}
-                    required
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  >
-                    <option value="">Sélectionner Genre</option>
-                    <option value="Homme">Homme</option>
-                    <option value="Femme">Femme</option>
-                  </Form.Select>
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Grade</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="grade"
-                    value={donneesFormulaire.grade}
-                    onChange={gererChangementInput}
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Date de Recrutement</Form.Label>
-                  <Form.Control
-                    type="date"
-                    name="dateRecrutement"
-                    value={donneesFormulaire.dateRecrutement}
-                    onChange={gererChangementInput}
-                    required
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Diplôme</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="diplome"
-                    value={donneesFormulaire.diplome}
-                    onChange={gererChangementInput}
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Affectation</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="affectation"
-                    value={donneesFormulaire.affectation}
-                    onChange={gererChangementInput}
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Situation Familiale</Form.Label>
-                  <Form.Select
-                    name="situationFamiliale"
-                    value={donneesFormulaire.situationFamiliale}
-                    onChange={gererChangementInput}
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  >
-                    <option value="">Sélectionner Statut</option>
-                    <option value="Célibataire">Célibataire</option>
-                    <option value="Marié">Marié</option>
-                    <option value="Divorcé">Divorcé</option>
-                  </Form.Select>
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Mission</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="missionPoste"
-                    value={donneesFormulaire.missionPoste}
-                    onChange={gererChangementInput}
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Division</Form.Label>
-                  <Form.Select
-                    name="divisionId"
-                    value={donneesFormulaire.divisionId}
-                    onChange={gererChangementInput}
-                    required
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  >
-                    <option value="">Sélectionner Division</option>
-                    {divisions.map((division) => (
-                      <option key={division._id} value={division._id}>
-                        {division.name}
-                      </option>
-                    ))}
-                  </Form.Select>
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Formation Initiale</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="formationInitiale"
-                    value={donneesFormulaire.formationInitiale}
-                    onChange={gererChangementInput}
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Activité Principale</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="activitePrincipale"
-                    value={donneesFormulaire.activitePrincipale}
-                    onChange={gererChangementInput}
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">CIN</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="cin"
-                    value={donneesFormulaire.cin}
-                    onChange={gererChangementInput}
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">PPR</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="ppr"
-                    value={donneesFormulaire.ppr}
-                    onChange={gererChangementInput}
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Adresse</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="adresse"
-                    value={donneesFormulaire.adresse}
-                    onChange={gererChangementInput}
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Email</Form.Label>
-                  <Form.Control
-                    type="email"
-                    name="email"
-                    value={donneesFormulaire.email}
-                    onChange={gererChangementInput}
-                    required
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Numéro de Téléphone</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="numeroTelephone"
-                    value={donneesFormulaire.numeroTelephone}
-                    onChange={gererChangementInput}
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Expérience Externe</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="experienceExterne"
-                    value={donneesFormulaire.experienceExterne}
-                    onChange={gererChangementInput}
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Expérience Interne</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="experienceInterne"
-                    value={donneesFormulaire.experienceInterne}
-                    onChange={gererChangementInput}
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Form.Group className="form-group-compact" style={{ flex: '1 1 48%', minWidth: '200px' }}>
-                  <Form.Label className="form-label-compact">Informations Supplémentaires</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="informationsSupplementaires"
-                    value={donneesFormulaire.informationsSupplementaires}
-                    onChange={gererChangementInput}
-                    placeholder="Séparez par des virgules"
-                    className="form-control-compact"
-                    style={{ borderRadius: '0.3rem' }}
-                  />
-                </Form.Group>
-                <Button variant="primary" type="submit" className="mt-3 w-100" style={{ borderRadius: '0.3rem' }}>
+            <Modal.Body style={modalBodyStyle}>
+              <Form onSubmit={gererSoumission} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '1rem' }}>
+                {[
+                  { label: 'Nom Complet', name: 'nomComplet', type: 'text', required: true },
+                  { label: 'Date de Naissance', name: 'dateNaissance', type: 'date' },
+                  { label: 'Genre', name: 'sexe', type: 'select', options: ['', 'Homme', 'Femme'], required: true },
+                  { label: 'Grade', name: 'grade', type: 'text' },
+                  { label: 'Date de Recrutement', name: 'dateRecrutement', type: 'date', required: true },
+                  { label: 'Diplôme', name: 'diplome', type: 'text' },
+                  { label: 'Affectation', name: 'affectation', type: 'text' },
+                  { label: 'Situation Familiale', name: 'situationFamiliale', type: 'select', options: ['', 'Célibataire', 'Marié', 'Divorcé'] },
+                  { label: 'Mission', name: 'missionPoste', type: 'text' },
+                  { label: 'Division', name: 'divisionId', type: 'select', options: [''].concat(divisions.map(d => d._id)), labels: [''].concat(divisions.map(d => d.name)), required: true },
+                  { label: 'Formation Initiale', name: 'formationInitiale', type: 'text' },
+                  { label: 'Activité Principale', name: 'activitePrincipale', type: 'text' },
+                  { label: 'CIN', name: 'cin', type: 'text' },
+                  { label: 'PPR', name: 'ppr', type: 'text' },
+                  { label: 'Adresse', name: 'adresse', type: 'text' },
+                  { label: 'Email', name: 'email', type: 'email', required: true },
+                  { label: 'Numéro de Téléphone', name: 'numeroTelephone', type: 'text' },
+                  { label: 'Expérience Externe', name: 'experienceExterne', type: 'text' },
+                  { label: 'Expérience Interne', name: 'experienceInterne', type: 'text' },
+                  { label: 'Informations Supplémentaires', name: 'informationsSupplementaires', type: 'text', placeholder: 'Séparez par des virgules' },
+                  { label: 'Image', name: 'image', type: 'file', accept: 'image/jpeg' },
+                  { label: 'Ancienneté (ans)', name: 'anciennete', type: 'text', readOnly: true },
+                ].map((field, idx) => (
+                  <Form.Group key={idx} style={{ ...formGroupCompactStyle, flex: '1 1 48%', minWidth: '200px' }}>
+                    <Form.Label style={formLabelCompactStyle}>{field.label}</Form.Label>
+                    {field.type === 'select' ? (
+                      <Form.Select
+                        name={field.name}
+                        value={donneesFormulaire[field.name]}
+                        onChange={gererChangementInput}
+                        required={field.required}
+                        style={{ ...formControlStyle, ...formControlCompactStyle, borderRadius: '0.3rem' }}
+                      >
+                        {field.options.map((option, i) => (
+                          <option key={i} value={option}>
+                            {field.labels ? field.labels[i] : option || `Sélectionner ${field.label}`}
+                          </option>
+                        ))}
+                      </Form.Select>
+                    ) : field.type === 'file' ? (
+                      <>
+                        <Form.Control
+                          type="file"
+                          accept={field.accept}
+                          onChange={handleImageChange}
+                          style={{ ...formControlStyle, ...formControlCompactStyle, borderRadius: '0.3rem' }}
+                        />
+                        {imagePreview && (
+                          <div style={{ marginTop: '0.5rem' }}>
+                            <img src={imagePreview} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100px' }} />
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <Form.Control
+                        type={field.type}
+                        name={field.name}
+                        value={donneesFormulaire[field.name]}
+                        onChange={gererChangementInput}
+                        required={field.required}
+                        readOnly={field.readOnly}
+                        placeholder={field.placeholder}
+                        style={{ ...formControlStyle, ...formControlCompactStyle, borderRadius: '0.3rem' }}
+                      />
+                    )}
+                  </Form.Group>
+                ))}
+                <Button
+                  variant="outline-secondary"
+                  type="submit"
+                  onMouseEnter={() => setHoveredButton('submit')}
+                  onMouseLeave={() => setHoveredButton(null)}
+                  style={{ ...btnStyle('submit'), marginTop: '1rem', width: '100%', borderRadius: '0.3rem' }}
+                >
                   Enregistrer
                 </Button>
               </Form>
             </Modal.Body>
-          </Modal>
+          </div>
+        </Modal>
 
-          <Modal show={afficherModalDetails} onHide={() => setAfficherModalDetails(false)} centered>
-            <Modal.Header closeButton>
+        <Modal show={afficherModalDetails} onHide={() => setAfficherModalDetails(false)} centered>
+          <div style={modalContentStyle}>
+            <Modal.Header closeButton style={modalHeaderStyle}>
               <Modal.Title>Détails de l'Employé</Modal.Title>
             </Modal.Header>
-            <Modal.Body className="pt-4">
+            <Modal.Body style={{ ...modalBodyStyle, paddingTop: '1rem' }}>
               {employeActuel && (
-                <div className="row g-3">
-                  <div className="col-12 col-md-6"><strong>Nom Complet :</strong> {employeActuel.nomComplet || ''}</div>
-                  <div className="col-12 col-md-6"><strong>Date de Naissance :</strong> {employeActuel.dateNaissance ? new Date(employeActuel.dateNaissance).toLocaleDateString('fr-FR') : ''}</div>
-                  <div className="col-12 col-md-6"><strong>Genre :</strong> {employeActuel.sexe || ''}</div>
-                  <div className="col-12 col-md-6"><strong>Grade :</strong> {employeActuel.grade || ''}</div>
-                  <div className="col-12 col-md-6"><strong>Date de Recrutement :</strong> {employeActuel.dateRecrutement ? new Date(employeActuel.dateRecrutement).toLocaleDateString('fr-FR') : ''}</div>
-                  <div className="col-12 col-md-6"><strong>Diplôme :</strong> {employeActuel.diplome || ''}</div>
-                  <div className="col-12 col-md-6"><strong>Affectation :</strong> {employeActuel.affectation || ''}</div>
-                  <div className="col-12 col-md-6"><strong>Situation Familiale :</strong> {employeActuel.situationFamiliale || ''}</div>
-                  <div className="col-12 col-md-6"><strong>Mission :</strong> {employeActuel.missionPoste || ''}</div>
-                  <div className="col-12 col-md-6"><strong>Division :</strong> {employeActuel.divisionId?.name || 'Inconnue'}</div>
-                  <div className="col-12 col-md-6"><strong>Formation Initiale :</strong> {employeActuel.formationInitiale || ''}</div>
-                  <div className="col-12 col-md-6"><strong>Activité Principale :</strong> {employeActuel.activitePrincipale || ''}</div>
-                  <div className="col-12 col-md-6"><strong>CIN :</strong> {employeActuel.cin || ''}</div>
-                  <div className="col-12 col-md-6"><strong>PPR :</strong> {employeActuel.ppr || ''}</div>
-                  <div className="col-12 col-md-6"><strong>Adresse :</strong> {employeActuel.adresse || ''}</div>
-                  <div className="col-12 col-md-6"><strong>Email :</strong> {employeActuel.email || ''}</div>
-                  <div className="col-12 col-md-6"><strong>Numéro de Téléphone :</strong> {employeActuel.numeroTelephone || ''}</div>
-                  <div className="col-12 col-md-6"><strong>Expérience Externe :</strong> {employeActuel.experienceExterne || ''}</div>
-                  <div className="col-12 col-md-6"><strong>Expérience Interne :</strong> {employeActuel.experienceInterne || ''}</div>
-                  <div className="col-12 col-md-6"><strong>Informations Supplémentaires :</strong> {employeActuel.informationsSupplementaires?.join(', ') || ''}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+                  {[
+                    { label: 'Nom Complet', value: employeActuel.nomComplet },
+                    { label: 'Date de Naissance', value: formatDateSafely(employeActuel.dateNaissance) },
+                    { label: 'Genre', value: employeActuel.sexe },
+                    { label: 'Grade', value: employeActuel.grade },
+                    { label: 'Date de Recrutement', value: formatDateSafely(employeActuel.dateRecrutement) },
+                    { label: 'Diplôme', value: employeActuel.diplome },
+                    { label: 'Affectation', value: employeActuel.affectation },
+                    { label: 'Situation Familiale', value: employeActuel.situationFamiliale },
+                    { label: 'Mission', value: employeActuel.missionPoste },
+                    { label: 'Division', value: employeActuel.divisionId?.name || 'Inconnue' },
+                    { label: 'Formation Initiale', value: employeActuel.formationInitiale },
+                    { label: 'Activité Principale', value: employeActuel.activitePrincipale },
+                    { label: 'CIN', value: employeActuel.cin },
+                    { label: 'PPR', value: employeActuel.ppr },
+                    { label: 'Adresse', value: employeActuel.adresse },
+                    { label: 'Email', value: employeActuel.email },
+                    { label: 'Numéro de Téléphone', value: employeActuel.numeroTelephone },
+                    { label: 'Expérience Externe', value: employeActuel.experienceExterne },
+                    { label: 'Expérience Interne', value: employeActuel.experienceInterne },
+                    { label: 'Informations Supplémentaires', value: employeActuel.informationsSupplementaires?.join(', ') || '' },
+                    { label: 'Ancienneté (ans)', value: calculateAnciennete(employeActuel.dateRecrutement) },
+                  ].map((field, idx) => (
+                    <div key={idx} style={{ flex: '1 1 48%', minWidth: '200px', marginBottom: '0.5rem' }}>
+                      <strong>{field.label} :</strong> {field.value || ''}
+                    </div>
+                  ))}
                 </div>
               )}
             </Modal.Body>
-          </Modal>
+          </div>
+        </Modal>
 
-          {afficherCarteSuppression && (
-            <div className="position-fixed top-0 start-0 w-100 h-100 backdrop-custom" style={{ zIndex: 1050 }}>
-              <Card className="position-absolute top-50 start-50 translate-middle delete-card" style={{ width: '20rem' }}>
-                <Card.Body>
-                  <Card.Title>Confirmer la Suppression</Card.Title>
-                  <Card.Text>Êtes-vous sûr de vouloir supprimer l'employé <strong>{nomEmployeASupprimer}</strong> ?</Card.Text>
-                  <div className="d-flex justify-content-center gap-3 mt-3">
-                    <Button variant="danger" onClick={confirmerSuppression} style={{ width: '80px' }}>
-                      Oui
-                    </Button>
-                    <Button variant="outline-light" onClick={annulerSuppression} style={{ width: '80px' }}>
-                      Non
-                    </Button>
-                  </div>
-                </Card.Body>
-              </Card>
-            </div>
-          )}
-        </div>
+        {afficherCarteSuppression && (
+          <div style={{ ...backdropCustomStyle, zIndex: 1050 }}>
+            <Card style={{ ...deleteCardStyle, position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '20rem' }}>
+              <Card.Body>
+                <Card.Title>Confirmer la Suppression</Card.Title>
+                <Card.Text>Êtes-vous sûr de vouloir supprimer l'employé <strong>{nomEmployeASupprimer}</strong> ?</Card.Text>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1rem' }}>
+                  <Button
+                    variant="outline-secondary"
+                    onClick={confirmerSuppression}
+                    onMouseEnter={() => setHoveredDeleteButton(true)}
+                    onMouseLeave={() => setHoveredDeleteButton(false)}
+                    style={{ ...btnOutlineLightStyle, width: '80px' }}
+                  >
+                    Oui
+                  </Button>
+                  <Button
+                    variant="outline-secondary"
+                    onClick={annulerSuppression}
+                    onMouseEnter={() => setHoveredCancelButton(true)}
+                    onMouseLeave={() => setHoveredCancelButton(false)}
+                    style={{ ...btnOutlineLightStyle, width: '80px' }}
+                  >
+                    Non
+                  </Button>
+                </div>
+              </Card.Body>
+            </Card>
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 };
 
